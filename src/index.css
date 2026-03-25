@@ -1,0 +1,10 @@
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: 'Fredoka', 'Segoe UI Rounded', 'Nunito', system-ui, sans-serif;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}

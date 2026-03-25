@@ -1,0 +1,78 @@
+.crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 15;
+}
+
+.crosshair__line {
+  position: absolute;
+  background: rgba(70, 28, 28, 0.8);
+  box-shadow: 0 0 0 1px rgba(255, 241, 228, 0.8);
+}
+
+.crosshair__line--h {
+  left: 3px;
+  right: 3px;
+  top: 13px;
+  height: 2px;
+}
+
+.crosshair__line--v {
+  top: 3px;
+  bottom: 3px;
+  left: 13px;
+  width: 2px;
+}
+
+.crosshair__dot {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffe8d7;
+}
+
+.crosshair__reload-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42px;
+  height: 42px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  mask: radial-gradient(circle at center, transparent 62%, #000 64%);
+}
+
+.crosshair__empty-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46px;
+  height: 46px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255, 82, 82, 0.95), 0 0 14px rgba(255, 82, 82, 0.35);
+  animation: crosshair-empty-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes crosshair-empty-pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.95);
+    opacity: 0.65;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.05);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.95);
+    opacity: 0.65;
+  }
+}

@@ -1,0 +1,143 @@
+.museum-gate {
+  min-height: 100vh;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background:
+    radial-gradient(
+      circle at 15% 85%,
+      rgba(232, 168, 152, 0.55) 0%,
+      transparent 45%
+    ),
+    radial-gradient(
+      circle at 88% 20%,
+      rgba(255, 214, 181, 0.7) 0%,
+      transparent 42%
+    ),
+    radial-gradient(
+      ellipse 100% 70% at 50% 0%,
+      #ffe8df 0%,
+      #ffd4c8 35%,
+      #e8b8a8 100%
+    );
+  color: #5c3d36;
+  font-family: 'Fredoka', 'Segoe UI Rounded', system-ui, sans-serif;
+}
+
+.museum-gate__panel {
+  width: 100%;
+  max-width: 420px;
+  padding: 36px 32px 34px;
+  border-radius: 28px;
+  background: linear-gradient(165deg, #fff8f3 0%, #ffefe8 100%);
+  border: 4px solid #c97359;
+  box-shadow:
+    0 0 0 3px #f4d4c8,
+    8px 14px 0 rgba(180, 90, 70, 0.22),
+    0 18px 40px rgba(139, 74, 60, 0.18);
+}
+
+.museum-gate__title {
+  margin: 0 0 8px;
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #b35240;
+  text-shadow: 2px 2px 0 #f9ddd4;
+}
+
+.museum-gate__hint {
+  margin: 0 0 22px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  font-weight: 500;
+  color: #8b6560;
+}
+
+.museum-gate__label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #a65d4c;
+}
+
+.museum-gate__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 3px solid #e0a090;
+  background: #fffcfa;
+  color: #4a3430;
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 500;
+  outline: none;
+  box-shadow: inset 0 2px 8px rgba(200, 120, 100, 0.12);
+}
+
+.museum-gate__input:focus {
+  border-color: #c45c4a;
+  box-shadow:
+    inset 0 2px 8px rgba(200, 120, 100, 0.1),
+    0 0 0 4px rgba(232, 140, 120, 0.35);
+}
+
+.museum-gate__input::placeholder {
+  color: #c4a59e;
+}
+
+.museum-gate__error {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #c44d4d;
+}
+
+.museum-gate__button {
+  margin-top: 22px;
+  width: 100%;
+  padding: 16px 18px;
+  border-radius: 18px;
+  font-family: 'Lilita One', 'Fredoka', system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: #fffaf8;
+  background: linear-gradient(180deg, #e07862 0%, #c55a48 45%, #b34a3c 100%);
+  border: 3px solid #9c3f34;
+  box-shadow:
+    0 5px 0 #8a3a30,
+    0 8px 20px rgba(150, 60, 48, 0.35);
+  cursor: pointer;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+}
+
+.museum-gate__button:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.museum-gate__button:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow:
+    0 2px 0 #8a3a30,
+    0 4px 12px rgba(150, 60, 48, 0.3);
+}
+
+.museum-gate__button:disabled {
+  color: #a39a98;
+  background: linear-gradient(180deg, #d5cfcb 0%, #bfbdb9 50%, #b0aca8 100%);
+  border-color: #9e9894;
+  box-shadow:
+    0 3px 0 #8a8683,
+    0 4px 12px rgba(0, 0, 0, 0.08);
+  cursor: not-allowed;
+  text-shadow: none;
+  transform: none;
+  filter: saturate(0.65);
+}

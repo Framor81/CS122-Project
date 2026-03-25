@@ -1,0 +1,36 @@
+.combat-hud {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.combat-hud__health-ring {
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.combat-hud__health-core {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: rgba(37, 25, 25, 0.8);
+  color: #f3fff1;
+  font-size: 18px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.combat-hud__health-core {
+  line-height: 1;
+  letter-spacing: 0.2px;
+}
