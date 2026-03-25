@@ -45,19 +45,20 @@ function chooseTurn(rng) {
   return rng() > 0.5 ? 1 : 3
 }
 
-export function generateMuseumGrid(seedText = 'museum-seed-alpha') {
+export function generateMuseumGrid(seedText = 'museum-seed-alpha', gridSize = 800) {
   const seed = hashString(seedText)
   const rng = createRng(seed)
 
   // Larger museum footprint (more halls/rooms) while keeping `cellSize`
   // constant, so all room/hall dimensions in meters remain unchanged.
   // "800x800" here refers to the cell grid size.
-  const grid = new Grid(800, 800, 0.5)
+  const size = Math.max(10, Math.floor(gridSize))
+  const grid = new Grid(size, size, 0.5)
   // Hall thickness target:
   // - baseline was ~2.4m (≈ 3 capsule diameters at 0.8m each)
   // - requested: 3× wider => ~7.2m
   const corridorWidthCells = clampToOdd(Math.round(7.2 / grid.cellSize))
-  const margin = 20
+  const margin = Math.max(20, Math.floor(size * 0.03))
 
   const meta = {
     corridorWidthCells,
@@ -67,6 +68,7 @@ export function generateMuseumGrid(seedText = 'museum-seed-alpha') {
     gridWidth: grid.width,
     gridHeight: grid.height,
     cellSize: grid.cellSize,
+    gridSize: grid.width,
   }
 
   // Entrance: always a singular doorway on the "south" side.
@@ -111,14 +113,14 @@ export function generateMuseumGrid(seedText = 'museum-seed-alpha') {
   let dir = 1 // +z
   let lastDir = dir
 
-  // Increase corridor segment count proportionally with the grid size so
-  // the larger footprint is actually filled.
-  const baseGridWidthForSegments = 360
-  const baseSegmentsCount = 18
-  const segmentsCount = Math.max(
-    baseSegmentsCount,
-    Math.round(baseSegmentsCount * (grid.width / baseGridWidthForSegments)),
+  // Increase corridor segment count with the grid size so the larger
+  // footprint is actually filled. Clamp to avoid extremely slow generation.
+  const baseGridWidthForSegments = 800
+  const baseSegmentsCount = 22
+  const computedSegments = Math.round(
+    baseSegmentsCount * (grid.width / baseGridWidthForSegments),
   )
+  const segmentsCount = Math.max(14, Math.min(70, computedSegments))
 
   for (let i = 0; i < segmentsCount; i += 1) {
     const len = randInt(rng, 12, 28)

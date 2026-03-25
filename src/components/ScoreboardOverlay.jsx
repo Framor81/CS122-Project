@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-export function ScoreboardOverlay({ players }) {
+export function ScoreboardOverlay({ players, showCombatStats }) {
   const [show, setShow] = useState(false)
 
   useEffect(() => {
@@ -42,19 +42,34 @@ export function ScoreboardOverlay({ players }) {
       }}
     >
       <div style={{ fontWeight: 700, marginBottom: 8 }}>
-        Lobby ({players.length})
+        Lobby ({Array.isArray(players) ? players.length : 0})
       </div>
-      {players.map((name, idx) => (
+      {(Array.isArray(players) ? players : []).map((row, idx) => (
         <div
-          key={`${name}-${idx}`}
+          key={`${typeof row === 'object' && row !== null && 'id' in row ? row.id : row}-${idx}`}
           style={{
             padding: '3px 0',
             borderBottom:
               idx < players.length - 1 ? '1px solid rgba(255,255,255,0.12)' : 'none',
             fontSize: 14,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
           }}
         >
-          {name}
+          <span>
+            {typeof row === 'string'
+              ? row
+              : row?.name ?? (row?.id != null ? String(row.id) : 'Visitor')}
+          </span>
+          {showCombatStats ? (
+            <span style={{ opacity: 0.9, fontSize: 12 }}>
+              {typeof row === 'string'
+                ? ''
+                : `${row.kills ?? 0}/${row.deaths ?? 0}`}
+            </span>
+          ) : null}
         </div>
       ))}
     </div>

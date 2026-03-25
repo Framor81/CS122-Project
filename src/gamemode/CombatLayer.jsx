@@ -11,6 +11,8 @@ const GROUND_Y = FLOOR_THICKNESS + CHICKEN_RADIUS
 const WORLD_HALF = 56
 const SPAWN_BASE_SECONDS = 2.4
 const POP_LIFETIME = 1.0
+const PLAYER_HIT_POP_LIFETIME = 0.42
+const PLAYER_DEATH_POP_LIFETIME = 1.2
 const BULLET_LIFETIME = 1.2
 const BULLET_SPEED = 54
 const BULLET_RADIUS = 0.09
@@ -123,17 +125,67 @@ function createPopBurst(id, pos, bornAt) {
   return { id, bornAt, pos: pos.clone(), pieces }
 }
 
+function colorFromName(name) {
+  const text = (typeof name === 'string' && name.trim()) || 'Visitor'
+  let hash = 2166136261
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  const hue = ((hash >>> 0) % 360) / 360
+  const sat = 0.52
+  const light = 0.64
+  const color = new THREE.Color()
+  color.setHSL(hue, sat, light)
+  return `#${color.getHexString()}`
+}
+
+function createPlayerHitBurst(id, pos, bornAt) {
+  const pieces = Array.from({ length: 5 }, () => ({
+    vel: new THREE.Vector3(
+      randomRange(-2.8, 2.8),
+      randomRange(2.2, 4.2),
+      randomRange(-2.8, 2.8),
+    ),
+    radius: randomRange(0.06, 0.1),
+  }))
+  return { id, bornAt, pos: pos.clone(), pieces }
+}
+
+function createPlayerDeathBurst(id, pos, bornAt, color) {
+  const pieces = Array.from({ length: 16 }, () => ({
+    vel: new THREE.Vector3(
+      randomRange(-10.5, 10.5),
+      randomRange(6.4, 13.5),
+      randomRange(-10.5, 10.5),
+    ),
+    radius: randomRange(0.24, 0.4),
+  }))
+  return { id, bornAt, pos: pos.clone(), pieces, color }
+}
+
 export function CombatLayer({
   muzzleRef,
   collisionGrid,
   playerStateRef,
   onGunStateChange,
+  remotePlayers,
+  localId,
+  combatById,
+  reportPlayerHit,
+  hitEvents,
+  deathEvents,
+  localAlive = true,
 }) {
   const { camera } = useThree()
   const chickensRef = useRef([])
   const bulletsRef = useRef([])
   const popsRef = useRef([])
   const impactsRef = useRef([])
+  const playerHitPopsRef = useRef([])
+  const playerDeathPopsRef = useRef([])
+  const seenHitEventKeysRef = useRef(new Set())
+  const seenDeathEventKeysRef = useRef(new Set())
   const nowRef = useRef(0)
   const nextIdRef = useRef(1)
   const nextSpawnRef = useRef(0)
@@ -148,6 +200,8 @@ export function CombatLayer({
     bullets: [],
     pops: [],
     impacts: [],
+    playerHitPops: [],
+    playerDeathPops: [],
   })
   const shootDir = useMemo(() => new THREE.Vector3(), [])
   const shootOrigin = useMemo(() => new THREE.Vector3(), [])
@@ -374,6 +428,37 @@ export function CombatLayer({
   }, [collisionGrid])
 
   useEffect(() => {
+    for (const ev of hitEvents || []) {
+      if (!ev?.key || seenHitEventKeysRef.current.has(ev.key)) continue
+      seenHitEventKeysRef.current.add(ev.key)
+      playerHitPopsRef.current.push(
+        createPlayerHitBurst(
+          nextIdRef.current++,
+          new THREE.Vector3(ev.x, ev.y ?? 1, ev.z),
+          nowRef.current,
+        ),
+      )
+    }
+  }, [hitEvents])
+
+  useEffect(() => {
+    for (const ev of deathEvents || []) {
+      if (!ev?.key || seenDeathEventKeysRef.current.has(ev.key)) continue
+      seenDeathEventKeysRef.current.add(ev.key)
+      const victim = ev.id ? combatById?.[ev.id] : null
+      const color = colorFromName(victim?.name)
+      playerDeathPopsRef.current.push(
+        createPlayerDeathBurst(
+          nextIdRef.current++,
+          new THREE.Vector3(ev.x, ev.y ?? 1, ev.z),
+          nowRef.current,
+          color,
+        ),
+      )
+    }
+  }, [combatById, deathEvents])
+
+  useEffect(() => {
     const onKeyDown = (event) => {
       if (event.code !== 'KeyR') return
       if (!document.pointerLockElement) return
@@ -392,6 +477,7 @@ export function CombatLayer({
   useEffect(() => {
     const onMouseDown = (event) => {
       if (event.button !== 0 || !document.pointerLockElement) return
+      if (!localAlive) return
       const now = nowRef.current
       const isReloading = reloadEndsAtRef.current > now
       if (isReloading || ammoInMagRef.current <= 0) return
@@ -442,7 +528,7 @@ export function CombatLayer({
 
     window.addEventListener('mousedown', onMouseDown)
     return () => window.removeEventListener('mousedown', onMouseDown)
-  }, [aimPoint, camera, cameraRayDir, cameraRayOrigin, muzzleRef, notifyGunState, rayMarchToWallHit, rayToChickenHit, rayToMuseumFloorHit, shootDir, shootOrigin])
+  }, [aimPoint, camera, cameraRayDir, cameraRayOrigin, localAlive, muzzleRef, notifyGunState, rayMarchToWallHit, rayToChickenHit, rayToMuseumFloorHit, shootDir, shootOrigin])
 
   useFrame((state, delta) => {
     const now = state.clock.elapsedTime
@@ -600,6 +686,8 @@ export function CombatLayer({
       // Find earliest chicken hit along the bullet segment.
       let bestChickenIndex = -1
       let bestChickenDist = Infinity
+      let bestPlayerId = null
+      let bestPlayerDist = Infinity
 
       for (let i = 0; i < aliveChickens.length; i += 1) {
         const c = aliveChickens[i]
@@ -618,12 +706,25 @@ export function CombatLayer({
         }
       }
 
+      const remoteEntries = Object.entries(remotePlayers || {})
+      for (let i = 0; i < remoteEntries.length; i += 1) {
+        const [pid, p] = remoteEntries[i]
+        if (!p || pid === localId) continue
+        const combat = combatById?.[pid]
+        if (combat?.alive === false) continue
+        const center = new THREE.Vector3(p.x, (p.y ?? 1) + 0.45, p.z)
+        const hitT = segmentIntersectSphere(segStart, segEnd, center, PLAYER_RADIUS + BULLET_RADIUS)
+        if (hitT == null) continue
+        const distHit = distPrev + hitT * (distNext - distPrev)
+        if (distHit < bestPlayerDist) {
+          bestPlayerDist = distHit
+          bestPlayerId = pid
+        }
+      }
+
       // If wall is closer than chicken, resolve wall hit first.
-      if (
-        wallDist !== Infinity &&
-        bestChickenIndex >= 0 &&
-        wallDist <= bestChickenDist
-      ) {
+      const nearestEntityDist = Math.min(bestChickenDist, bestPlayerDist)
+      if (wallDist !== Infinity && nearestEntityDist !== Infinity && wallDist <= nearestEntityDist) {
         const impactPos =
           bullet.wallHitPoint ??
           segStart.clone().addScaledVector(bullet.dir, wallDist)
@@ -632,6 +733,11 @@ export function CombatLayer({
           bornAt: now,
           pos: impactPos.clone(),
         })
+        continue
+      }
+
+      if (bestPlayerId && bestPlayerDist <= distNext) {
+        reportPlayerHit?.(bestPlayerId)
         continue
       }
 
@@ -664,9 +770,17 @@ export function CombatLayer({
     impactsRef.current = impactsRef.current.filter(
       (imp) => now - imp.bornAt < IMPACT_LIFETIME,
     )
+    playerHitPopsRef.current = playerHitPopsRef.current.filter(
+      (pop) => now - pop.bornAt < PLAYER_HIT_POP_LIFETIME,
+    )
+    playerDeathPopsRef.current = playerDeathPopsRef.current.filter(
+      (pop) => now - pop.bornAt < PLAYER_DEATH_POP_LIFETIME,
+    )
 
     renderAccumulatorRef.current += delta
-    if (renderAccumulatorRef.current >= 1 / 24) {
+    // Update the React render snapshot more frequently so chicken motion
+    // doesn't look choppy.
+    if (renderAccumulatorRef.current >= 1 / 30) {
       renderAccumulatorRef.current = 0
       setSnapshot({
         chickens: chickensRef.current.map((c) => ({
@@ -697,6 +811,23 @@ export function CombatLayer({
           z: imp.pos.z,
           bornAt: imp.bornAt,
         })),
+        playerHitPops: playerHitPopsRef.current.map((p) => ({
+          id: p.id,
+          x: p.pos.x,
+          y: p.pos.y,
+          z: p.pos.z,
+          bornAt: p.bornAt,
+          pieces: p.pieces,
+        })),
+        playerDeathPops: playerDeathPopsRef.current.map((p) => ({
+          id: p.id,
+          x: p.pos.x,
+          y: p.pos.y,
+          z: p.pos.z,
+          bornAt: p.bornAt,
+          pieces: p.pieces,
+          color: p.color,
+        })),
       })
     }
   })
@@ -726,6 +857,12 @@ export function CombatLayer({
       ))}
       {snapshot.pops.map((pop) => (
         <ChickenPop key={pop.id} pop={pop} />
+      ))}
+      {snapshot.playerHitPops.map((pop) => (
+        <PlayerHitPop key={pop.id} pop={pop} />
+      ))}
+      {snapshot.playerDeathPops.map((pop) => (
+        <PlayerDeathPop key={pop.id} pop={pop} />
       ))}
     </>
   )
@@ -760,6 +897,78 @@ function ChickenPop({ pop }) {
             color={idx % 2 === 0 ? '#fff0db' : '#f0a57d'}
             emissive={idx % 2 === 0 ? '#ffd5a1' : '#ff8b57'}
             emissiveIntensity={0.5}
+          />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+function PlayerHitPop({ pop }) {
+  const refs = useRef([])
+  useFrame((state) => {
+    const age = state.clock.elapsedTime - pop.bornAt
+    const gravity = -9.8
+    for (let i = 0; i < pop.pieces.length; i += 1) {
+      const mesh = refs.current[i]
+      if (!mesh) continue
+      const vel = pop.pieces[i].vel
+      const radius = pop.pieces[i].radius
+      mesh.position.set(
+        pop.x + vel.x * age,
+        pop.y + vel.y * age + 0.5 * gravity * age * age,
+        pop.z + vel.z * age,
+      )
+      mesh.scale.setScalar(Math.max(0.01, radius * (1 - age / PLAYER_HIT_POP_LIFETIME)))
+    }
+  })
+
+  return (
+    <group>
+      {pop.pieces.map((_, idx) => (
+        <mesh key={idx} ref={(el) => (refs.current[idx] = el)} castShadow={false}>
+          <sphereGeometry args={[0.08, 8, 8]} />
+          <meshStandardMaterial
+            color="#a02222"
+            emissive="#7a1111"
+            emissiveIntensity={0.35}
+            transparent
+            opacity={0.85}
+          />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+function PlayerDeathPop({ pop }) {
+  const refs = useRef([])
+  useFrame((state) => {
+    const age = state.clock.elapsedTime - pop.bornAt
+    const gravity = -9.8
+    for (let i = 0; i < pop.pieces.length; i += 1) {
+      const mesh = refs.current[i]
+      if (!mesh) continue
+      const vel = pop.pieces[i].vel
+      const radius = pop.pieces[i].radius
+      mesh.position.set(
+        pop.x + vel.x * age,
+        pop.y + vel.y * age + 0.5 * gravity * age * age,
+        pop.z + vel.z * age,
+      )
+      mesh.scale.setScalar(Math.max(0.02, radius * (1 - age / PLAYER_DEATH_POP_LIFETIME)))
+    }
+  })
+
+  return (
+    <group>
+      {pop.pieces.map((_, idx) => (
+        <mesh key={idx} ref={(el) => (refs.current[idx] = el)} castShadow>
+          <sphereGeometry args={[0.18, 12, 12]} />
+          <meshStandardMaterial
+            color={pop.color}
+            emissive={pop.color}
+            emissiveIntensity={0.62}
           />
         </mesh>
       ))}

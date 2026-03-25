@@ -17,8 +17,14 @@ const allowedOrigins = [
 ]
 
 const DEFAULT_SPAWN = { x: 0, y: 1, z: 6, yaw: 0 }
+const MAX_HEALTH = 100
+const PLAYER_HIT_DAMAGE = 34
+const RESPAWN_MS = 3000
 
-/** @type {Record<string, { x: number; y: number; z: number; yaw: number; name: string }>} */
+/** @type {Record<string, {
+ * x: number; y: number; z: number; yaw: number; name: string;
+ * health: number; alive: boolean; kills: number; deaths: number; respawnAt: number;
+ * }>} */
 const players = Object.create(null)
 
 function sanitizeName(raw) {
@@ -47,7 +53,15 @@ io.on('connection', (socket) => {
   const onJoin = (payload) => {
     if (players[id]) return
     const name = sanitizeName(payload?.name)
-    players[id] = { ...DEFAULT_SPAWN, name }
+    players[id] = {
+      ...DEFAULT_SPAWN,
+      name,
+      health: MAX_HEALTH,
+      alive: true,
+      kills: 0,
+      deaths: 0,
+      respawnAt: 0,
+    }
 
     socket.emit('welcome', {
       id,
@@ -73,7 +87,63 @@ io.on('connection', (socket) => {
       z: p.z,
       yaw: p.yaw,
       name: p.name,
+      health: p.health,
+      alive: p.alive,
+      kills: p.kills,
+      deaths: p.deaths,
+      respawnAt: p.respawnAt,
     })
+  })
+
+  socket.on('playerHit', ({ victimId }) => {
+    if (typeof victimId !== 'string') return
+    if (victimId === id) return
+    const attacker = players[id]
+    const victim = players[victimId]
+    if (!attacker || !victim) return
+    if (!attacker.alive || !victim.alive) return
+
+    victim.health = Math.max(0, victim.health - PLAYER_HIT_DAMAGE)
+    io.emit('playerDamaged', {
+      id: victimId,
+      by: id,
+      health: victim.health,
+      x: victim.x,
+      y: victim.y,
+      z: victim.z,
+    })
+
+    if (victim.health > 0) return
+
+    victim.alive = false
+    victim.deaths += 1
+    victim.respawnAt = Date.now() + RESPAWN_MS
+    attacker.kills += 1
+    io.emit('playerDied', {
+      id: victimId,
+      by: id,
+      x: victim.x,
+      y: victim.y,
+      z: victim.z,
+      name: victim.name,
+      respawnAt: victim.respawnAt,
+      stats: {
+        [id]: { kills: attacker.kills, deaths: attacker.deaths },
+        [victimId]: { kills: victim.kills, deaths: victim.deaths },
+      },
+    })
+
+    setTimeout(() => {
+      const liveVictim = players[victimId]
+      if (!liveVictim) return
+      liveVictim.health = MAX_HEALTH
+      liveVictim.alive = true
+      liveVictim.respawnAt = 0
+      io.emit('playerRespawn', {
+        id: victimId,
+        health: liveVictim.health,
+      })
+    }, RESPAWN_MS)
   })
 
   socket.on('disconnect', () => {

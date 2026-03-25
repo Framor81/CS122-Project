@@ -6,6 +6,7 @@ function RemotePlayerEntity({ id, p, localId }) {
   const color = useCapsuleColorFromName(p.name)
   const nameplate = usePlayerNameplate(p.name)
   if (id === localId) return null
+  if (p?.alive === false) return null
 
   return (
     <group position={[p.x, p.y, p.z]}>
@@ -34,7 +35,6 @@ function RemotePlayerEntity({ id, p, localId }) {
         position={nameplate.billboardPosition}
         follow
         lockX
-        lockY
         lockZ
       >
         <Text

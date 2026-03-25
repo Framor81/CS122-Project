@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 import * as THREE from 'three'
@@ -20,6 +20,11 @@ export function Player({
   floorThickness = 0.12,
   wallThickness = 0.22,
   spawn,
+  respawnToken = 0,
+  worldGenToken = 0,
+  isDead = false,
+  remotePlayers = null,
+  combatById = null,
   onTransform,
 }) {
   const capsuleColor = useCapsuleColorFromName(displayName)
@@ -101,6 +106,35 @@ export function Player({
   const cameraRadius = 0.18
   const cameraClearanceFromPlayer = 0.25
   const cameraDistFracRef = useRef(1)
+
+  useEffect(() => {
+    if (!playerRef.current || (!respawnToken && !worldGenToken)) return
+
+    let nextX = spawn?.x ?? 0
+    let nextZ = spawn?.z ?? 6
+
+    // For respawn we pick a random valid floor tile.
+    if (respawnToken && collisionGrid) {
+      for (let i = 0; i < 260; i += 1) {
+        const cx = Math.floor(Math.random() * collisionGrid.width)
+        const cz = Math.floor(Math.random() * collisionGrid.height)
+        if (collisionGrid.get(cx, cz) !== CELL_FLOOR) continue
+        const [wx, wz] = collisionGrid.cellToWorld(cx, cz)
+        nextX = wx
+        nextZ = wz
+        break
+      }
+    }
+    playerRef.current.position.set(nextX, groundTopYStand, nextZ)
+    verticalVelocity.current = 0
+  }, [
+    collisionGrid,
+    groundTopYStand,
+    respawnToken,
+    worldGenToken,
+    spawn?.x,
+    spawn?.z,
+  ])
 
   const isBlocked = (x, z, radius = playerRadius, extraCells = 2) => {
     if (!collisionGrid) return false
@@ -198,17 +232,19 @@ export function Player({
     right.current.set(-forward.current.z, 0, forward.current.x)
 
     moveDirection.current.set(0, 0, 0)
-    if (input.forward) moveDirection.current.add(forward.current)
-    if (input.backward) moveDirection.current.sub(forward.current)
-    if (input.right) moveDirection.current.add(right.current)
-    if (input.left) moveDirection.current.sub(right.current)
+    if (!isDead) {
+      if (input.forward) moveDirection.current.add(forward.current)
+      if (input.backward) moveDirection.current.sub(forward.current)
+      if (input.right) moveDirection.current.add(right.current)
+      if (input.left) moveDirection.current.sub(right.current)
+    }
 
     const slideActive = slideUntilRef.current > now
     const diveActive = diveUntilRef.current > now
-    const wantCrouch = combatEnabled && input.crouch
-    const wantSprint = combatEnabled && input.sprint
+    const wantCrouch = !isDead && combatEnabled && input.crouch
+    const wantSprint = !isDead && combatEnabled && input.sprint
     const crouchJustPressed = wantCrouch && !prevCrouchDownRef.current
-    const diveJustPressed = combatEnabled && input.dive && !prevDiveDownRef.current
+    const diveJustPressed = !isDead && combatEnabled && input.dive && !prevDiveDownRef.current
 
     // Grounded test for sprint/slide triggers should use standing height,
     // otherwise crouching immediately makes the "feet" math lie.
@@ -313,12 +349,48 @@ export function Player({
       const dx = dirVec.x * step
       const dz = dirVec.z * step
 
-      const nextX = player.position.x + dx
-      if (!isBlocked(nextX, player.position.z)) {
-        player.position.x = nextX
+      let nextX = player.position.x + dx
+      let nextZ = player.position.z + dz
+
+      // Walls first (axis-wise like before).
+      if (isBlocked(nextX, player.position.z)) nextX = player.position.x
+      if (isBlocked(nextX, nextZ)) {
+        // Try axis fallback before full revert.
+        if (!isBlocked(player.position.x, nextZ)) nextX = player.position.x
+        else nextZ = player.position.z
       }
-      const nextZ = player.position.z + dz
-      if (!isBlocked(player.position.x, nextZ)) {
+
+      // Simple player collision against remote players.
+      if (combatEnabled && !isDead && remotePlayers && combatById) {
+        const minDist = playerRadius * 2 + 0.04
+        for (const [rid, rp] of Object.entries(remotePlayers)) {
+          const alive =
+            combatById?.[rid]?.alive ??
+            rp?.alive ??
+            true
+          if (!alive) continue
+          const rx = rp?.x
+          const rz = rp?.z
+          if (typeof rx !== 'number' || typeof rz !== 'number') continue
+          const ddx = nextX - rx
+          const ddz = nextZ - rz
+          const dist = Math.hypot(ddx, ddz)
+          if (dist < 1e-6 || dist >= minDist) continue
+          const nx = ddx / dist
+          const nz = ddz / dist
+          const push = (minDist - dist) + 0.01
+          nextX += nx * push
+          nextZ += nz * push
+
+          // Don't let separation push you into walls.
+          if (isBlocked(nextX, player.position.z)) nextX = player.position.x
+          if (isBlocked(nextX, nextZ)) nextZ = player.position.z
+        }
+      }
+
+      // Final wall gate.
+      if (!isBlocked(nextX, nextZ)) {
+        player.position.x = nextX
         player.position.z = nextZ
       }
     }
@@ -520,7 +592,7 @@ export function Player({
 
     if (input.jumpQueued) {
       if (grounded && !wantsCrouchEffective && !isDiving) {
-        verticalVelocity.current = JUMP_VELOCITY
+        if (!isDead) verticalVelocity.current = JUMP_VELOCITY
       }
       input.jumpQueued = false
     }
@@ -747,7 +819,7 @@ export function Player({
           roughness={0.08}
         />
       </mesh>
-      {combatEnabled ? (
+      {combatEnabled && !isDead ? (
         <CapsuleGun reloadProgress={reloadProgress} isReloading={isReloading} />
       ) : null}
     </group>
