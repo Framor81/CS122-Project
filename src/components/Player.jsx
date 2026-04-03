@@ -55,9 +55,6 @@ export function Player({
   // Combat-only locomotion state.
   const prevCrouchDownRef = useRef(false)
   const prevDiveDownRef = useRef(false)
-  const slideUntilRef = useRef(-1)
-  const slideCooldownUntilRef = useRef(-1)
-  const slideDirRef = useRef(new THREE.Vector3())
   const diveUntilRef = useRef(-1)
   const diveCooldownUntilRef = useRef(-1)
   const diveTurnUntilRef = useRef(-1)
@@ -86,18 +83,13 @@ export function Player({
       vel: new THREE.Vector3(),
       bornAt: 0,
       life: 0,
-      isScrape: false,
     })),
   )
   const sprintSpawnAccRef = useRef(0)
-  const slideStreakRef = useRef(null)
 
-  const SPRINT_SPEED_MULT = 1.35
+  const SPRINT_SPEED_MULT = 1.89
   const CROUCH_SPEED_MULT = 0.7
-  const SLIDE_SPEED_MULT = 1.9
   const DIVE_SPEED_MULT = 2.8
-  const SLIDE_DURATION = 0.75
-  const SLIDE_COOLDOWN = 1.2
   const DIVE_DURATION = 0.85
   const DIVE_COOLDOWN = 1.8
   const DIVE_UP_PHASE = 0.22
@@ -239,43 +231,24 @@ export function Player({
       if (input.left) moveDirection.current.sub(right.current)
     }
 
-    const slideActive = slideUntilRef.current > now
     const diveActive = diveUntilRef.current > now
     const wantCrouch = !isDead && combatEnabled && input.crouch
-    const wantSprint = !isDead && combatEnabled && input.sprint
+    const wantSprint = !isDead && input.sprint
     const crouchJustPressed = wantCrouch && !prevCrouchDownRef.current
     const diveJustPressed = !isDead && combatEnabled && input.dive && !prevDiveDownRef.current
 
-    // Grounded test for sprint/slide triggers should use standing height,
-    // otherwise crouching immediately makes the "feet" math lie.
+    // Grounded test for crouch drop should use standing height, otherwise
+    // crouching immediately makes the "feet" math lie.
     const groundedStandNow =
       player.position.y - playerHalfHeightStand <= floorThickness + 0.08
 
-    let effectiveHalfHeight =
-      wantCrouch || slideActive
-        ? playerHalfHeightCrouch
-        : playerHalfHeightStand
+    let effectiveHalfHeight = wantCrouch
+      ? playerHalfHeightCrouch
+      : playerHalfHeightStand
     let groundedNow =
       player.position.y - effectiveHalfHeight <= floorThickness + 0.06
 
-    if (
-      wantSprint &&
-      crouchJustPressed &&
-      !diveActive &&
-      now >= slideCooldownUntilRef.current &&
-      groundedStandNow
-    ) {
-      // Start crouch-slide.
-      slideUntilRef.current = now + SLIDE_DURATION
-      slideCooldownUntilRef.current = now + SLIDE_COOLDOWN
-      if (moveDirection.current.lengthSq() > 1e-6) {
-        slideDirRef.current.copy(moveDirection.current).normalize()
-      } else {
-        slideDirRef.current.copy(forward.current).normalize()
-      }
-    }
-
-    if (diveJustPressed && !slideActive && now >= diveCooldownUntilRef.current) {
+    if (diveJustPressed && now >= diveCooldownUntilRef.current) {
       diveUntilRef.current = now + DIVE_DURATION
       diveCooldownUntilRef.current = now + DIVE_COOLDOWN
       const inAir = !groundedNow
@@ -289,23 +262,20 @@ export function Player({
       }
     }
 
-    const slideActiveNext = slideUntilRef.current > now
     const diveActiveNext = diveUntilRef.current > now
-    effectiveHalfHeight =
-      wantCrouch || slideActiveNext
-        ? playerHalfHeightCrouch
-        : playerHalfHeightStand
+    effectiveHalfHeight = wantCrouch
+      ? playerHalfHeightCrouch
+      : playerHalfHeightStand
     groundedNow = player.position.y - effectiveHalfHeight <= floorThickness + 0.06
 
     // If we've just crouched while grounded, drop the capsule so the feet
-    // stay on the floor (otherwise slide triggers can miss).
+    // stay on the floor.
     if (crouchJustPressed && groundedStandNow && !diveActive) {
       player.position.y = groundTopYCrouch
       verticalVelocity.current = 0
     }
 
     const cameraSeatOffset = effectiveHalfHeight === playerHalfHeightCrouch ? 0.42 : 0.62
-    const isSliding = slideActiveNext
     const isDiving = diveActiveNext
     const shouldDiveRotate = isDiving && now >= diveTurnUntilRef.current
 
@@ -316,20 +286,18 @@ export function Player({
     let speed = PLAYER_SPEED
     if (combatEnabled) {
       if (isDiving) speed *= DIVE_SPEED_MULT
-      else if (isSliding) speed *= SLIDE_SPEED_MULT
-      else if (wantSprint && !wantsCrouchEffective) speed *= SPRINT_SPEED_MULT
       else if (wantsCrouchEffective) speed *= CROUCH_SPEED_MULT
+    }
+    if (!isDiving && wantSprint && !wantsCrouchEffective) {
+      speed *= SPRINT_SPEED_MULT
     }
 
     const sprintVisualActive =
-      combatEnabled &&
       wantSprint &&
       movingNow &&
       !wantsCrouchEffective &&
-      !isSliding &&
       !isDiving
     const diveDashActive = combatEnabled && isDiving
-    const slideScrapeActive = combatEnabled && isSliding
     const dashVisualActive = sprintVisualActive || diveDashActive
 
     const effectiveGroundTopY = effectiveHalfHeight + floorThickness
@@ -337,13 +305,9 @@ export function Player({
     const prevPosX = player.position.x
     const prevPosZ = player.position.z
 
-    if (moveDirection.current.lengthSq() > 1e-6 || isSliding || isDiving) {
-      const dirVec = isDiving
-        ? diveDirRef.current
-        : isSliding
-          ? slideDirRef.current
-          : moveDirection.current
-      if (!isSliding && !isDiving) dirVec.normalize()
+    if (moveDirection.current.lengthSq() > 1e-6 || isDiving) {
+      const dirVec = isDiving ? diveDirRef.current : moveDirection.current
+      if (!isDiving) dirVec.normalize()
 
       const step = speed * delta
       const dx = dirVec.x * step
@@ -407,10 +371,10 @@ export function Player({
     }
 
     if (capsuleVisualGroupRef.current) {
-      const crouchScaleY = wantsCrouchEffective && !isDiving ? (isSliding ? 0.38 : 0.5) : 1
+      const crouchScaleY = wantsCrouchEffective && !isDiving ? 0.5 : 1
       capsuleVisualGroupRef.current.scale.set(1, crouchScaleY, 1)
       capsuleVisualGroupRef.current.rotation.set(
-        shouldDiveRotate ? -Math.PI / 2 : isSliding ? -0.36 : 0,
+        shouldDiveRotate ? -Math.PI / 2 : 0,
         0,
         0,
       )
@@ -467,7 +431,6 @@ export function Player({
           const d = ds[dIdx]
           d.alive = true
           d.bornAt = now
-          d.isScrape = false
           d.life = 0.18 + Math.random() * 0.12
           const faceDir = movedDir.current.clone().normalize()
           const dashBack = 0.52 + Math.random() * 0.16
@@ -546,35 +509,18 @@ export function Player({
       mesh.rotation.y = Math.atan2(dashDirLocalTmp.current.x, dashDirLocalTmp.current.z)
       const rem = 1 - age / d.life
       const traveled = d.pos.distanceTo(d.startPos)
-      const distFade = Math.max(0, 1 - traveled / (d.isScrape ? 2.4 : 1.8))
+      const distFade = Math.max(0, 1 - traveled / 1.8)
       const fade = rem * distFade
       mesh.scale.set(
-        Math.max(0.01, fade * (d.isScrape ? 0.8 : 0.55)),
-        Math.max(0.005, fade * (d.isScrape ? 0.16 : 0.12)),
-        Math.max(0.02, fade * (d.isScrape ? 1.45 : 1.05)),
+        Math.max(0.01, fade * 0.55),
+        Math.max(0.005, fade * 0.12),
+        Math.max(0.02, fade * 1.05),
       )
       if (mesh.material) {
         mesh.material.opacity = 0.75 * fade
         mesh.material.color.set('#ffffff')
         mesh.material.emissive.set('#ffffff')
         mesh.material.emissiveIntensity = 2.2
-      }
-    }
-
-    const slideStreak = slideStreakRef.current
-    if (slideStreak) {
-      if (slideScrapeActive) {
-        // Keep this fully local to the player so it cannot disappear due to
-        // world/local direction conversion mismatch.
-        const pulse = 1 + Math.sin(now * 42) * 0.18
-        slideStreak.position.set(0, -0.48, -0.92)
-        slideStreak.rotation.y = 0
-        slideStreak.scale.set(0.18, 0.05, 2.2 * pulse)
-        if (slideStreak.material) {
-          slideStreak.material.opacity = 1
-        }
-      } else {
-        slideStreak.scale.set(0, 0, 0)
       }
     }
 
@@ -807,18 +753,6 @@ export function Player({
           />
         </mesh>
       ))}
-      <mesh ref={slideStreakRef} castShadow={false} frustumCulled={false}>
-        <boxGeometry args={[0.06, 0.012, 0.45]} />
-        <meshStandardMaterial
-          color="#ffffff"
-          emissive="#ffffff"
-          emissiveIntensity={6}
-          transparent
-          opacity={1}
-          depthWrite={false}
-          roughness={0.08}
-        />
-      </mesh>
       {combatEnabled && !isDead ? (
         <CapsuleGun reloadProgress={reloadProgress} isReloading={isReloading} />
       ) : null}

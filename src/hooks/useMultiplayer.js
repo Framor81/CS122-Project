@@ -10,7 +10,7 @@ function getServerUrl() {
   return undefined
 }
 
-export function useMultiplayer(displayName) {
+export function useMultiplayer(displayName, sessionCode) {
   const [status, setStatus] = useState('connecting')
   const [localId, setLocalId] = useState(null)
   const [remotePlayers, setRemotePlayers] = useState({})
@@ -20,12 +20,14 @@ export function useMultiplayer(displayName) {
   const [localRespawnAt, setLocalRespawnAt] = useState(0)
   const [respawnToken, setRespawnToken] = useState(0)
   const [nowMs, setNowMs] = useState(0)
+  const [sessionCloseAt, setSessionCloseAt] = useState(0)
   const socketRef = useRef(null)
   const lastSendRef = useRef(0)
 
   useEffect(() => {
     const name = typeof displayName === 'string' ? displayName.trim() : ''
-    if (!name) return
+    const room = typeof sessionCode === 'string' ? sessionCode.trim().toUpperCase() : ''
+    if (!name || !room) return
 
     const url = getServerUrl()
     const socket = io(url, {
@@ -38,7 +40,7 @@ export function useMultiplayer(displayName) {
     socketRef.current = socket
 
     const emitJoin = () => {
-      socket.emit('join', { name })
+      socket.emit('join', { name, sessionCode: room })
     }
 
     const onConnect = () => {
@@ -230,6 +232,12 @@ export function useMultiplayer(displayName) {
       })
     })
 
+    socket.on('sessionClosed', ({ countdownMs }) => {
+      const delayMs = Math.max(0, Number(countdownMs) || 3000)
+      setSessionCloseAt(Date.now() + delayMs)
+      setStatus('disconnected')
+    })
+
     if (socket.connected) {
       queueMicrotask(() => {
         setStatus('connected')
@@ -244,8 +252,9 @@ export function useMultiplayer(displayName) {
       socket.removeAllListeners()
       socket.disconnect()
       socketRef.current = null
+      setSessionCloseAt(0)
     }
-  }, [displayName])
+  }, [displayName, sessionCode])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -274,6 +283,10 @@ export function useMultiplayer(displayName) {
     0,
     localRespawnAt ? Math.ceil((localRespawnAt - nowMs) / 1000) : 0,
   )
+  const sessionCloseRemaining = Math.max(
+    0,
+    sessionCloseAt ? Math.ceil((sessionCloseAt - nowMs) / 1000) : 0,
+  )
 
   return {
     status,
@@ -284,6 +297,7 @@ export function useMultiplayer(displayName) {
     deathEvents,
     localCombat,
     respawnRemaining,
+    sessionCloseRemaining,
     respawnToken,
     sendTransform,
     reportPlayerHit,

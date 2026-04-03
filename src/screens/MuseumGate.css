@@ -1,5 +1,7 @@
 .museum-gate {
   min-height: 100vh;
+  position: relative;
+  overflow: hidden;
   margin: 0;
   display: flex;
   align-items: center;
@@ -28,6 +30,8 @@
 }
 
 .museum-gate__panel {
+  position: relative;
+  z-index: 2;
   width: 100%;
   max-width: 420px;
   padding: 36px 32px 34px;
@@ -40,6 +44,110 @@
     0 18px 40px rgba(139, 74, 60, 0.18);
 }
 
+.museum-gate__session-layout {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 1040px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 96px;
+}
+
+.museum-gate__session-box {
+  border-radius: 28px;
+  background: linear-gradient(165deg, #fff8f3 0%, #ffefe8 100%);
+  border: 4px solid #c97359;
+  box-shadow:
+    0 0 0 3px #f4d4c8,
+    0 18px 36px rgba(139, 74, 60, 0.18);
+  overflow: hidden;
+}
+
+.museum-gate__session-box--main {
+  width: 520px;
+  height: 340px;
+  padding: 34px 30px 30px;
+}
+
+.museum-gate__session-box--people {
+  width: 280px;
+  height: 340px;
+  padding: 24px 20px;
+}
+
+.museum-gate__session-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.museum-gate__copy-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 2px solid #b56553;
+  background: #fff7f3;
+  color: #a55343;
+  font-size: 1.02rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+}
+
+.museum-gate__whimsy {
+  --mx: 0;
+  --my: 0;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.museum-gate__whimsy-shape {
+  position: absolute;
+  opacity: 0.34;
+  filter: blur(0.2px);
+  animation: museum-whimsy-float 6s ease-in-out infinite;
+}
+
+.museum-gate__whimsy-shape--circle {
+  border-radius: 999px;
+}
+
+.museum-gate__whimsy-shape--square {
+  border-radius: 8px;
+}
+
+.museum-gate__whimsy-shape--diamond {
+  border-radius: 6px;
+  transform: rotate(45deg);
+}
+
+.museum-gate__whimsy-shape--triangle {
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+  border-left: calc(var(--tri-size, 34px) * 0.55) solid transparent;
+  border-right: calc(var(--tri-size, 34px) * 0.55) solid transparent;
+  border-bottom: var(--tri-size, 34px) solid var(--tri-color, #ffe3bf);
+  opacity: 0.28;
+}
+
+@keyframes museum-whimsy-float {
+  0%,
+  100% {
+    margin-top: 0;
+  }
+  50% {
+    margin-top: -10px;
+  }
+}
+
 .museum-gate__title {
   margin: 0 0 8px;
   font-size: 1.85rem;
@@ -47,6 +155,58 @@
   letter-spacing: 0.02em;
   color: #b35240;
   text-shadow: 2px 2px 0 #f9ddd4;
+}
+
+.museum-gate__title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.museum-gate__info-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.museum-gate__info-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 2px solid #b56553;
+  background: #fff7f3;
+  color: #a55343;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+}
+
+.museum-gate__info-tooltip {
+  position: absolute;
+  top: 30px;
+  right: 0;
+  width: 280px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(156, 63, 52, 0.35);
+  background: rgba(255, 249, 245, 0.98);
+  color: #6d4b43;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  box-shadow: 0 8px 18px rgba(80, 42, 35, 0.14);
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 20;
+}
+
+.museum-gate__info-wrap:hover .museum-gate__info-tooltip,
+.museum-gate__info-wrap:focus-within .museum-gate__info-tooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .museum-gate__hint {
@@ -140,4 +300,26 @@
   text-shadow: none;
   transform: none;
   filter: saturate(0.65);
+}
+
+.museum-gate__button--signup {
+  background: linear-gradient(180deg, #5f8f76 0%, #4d7a64 45%, #3f6554 100%);
+  border-color: #355547;
+  box-shadow:
+    0 5px 0 #2f4b3f,
+    0 8px 20px rgba(52, 85, 70, 0.33);
+}
+
+@media (max-width: 900px) {
+  .museum-gate__session-layout {
+    max-width: 460px;
+    flex-direction: column;
+    gap: 18px;
+    align-items: center;
+  }
+
+  .museum-gate__session-box--main,
+  .museum-gate__session-box--people {
+    width: 100%;
+  }
 }

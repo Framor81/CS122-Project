@@ -1,6 +1,6 @@
 import { ContactShadows, PointerLockControls, Text } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { CombatLayer } from '../gamemode/CombatLayer.jsx'
 import { Player } from './Player.jsx'
@@ -58,10 +58,6 @@ function MovingSunLight() {
   )
 }
 
-function randomInt(min, max) {
-  return Math.floor(min + Math.random() * (max - min + 1))
-}
-
 export function GameScene({
   displayName,
   inputRef,
@@ -75,75 +71,31 @@ export function GameScene({
   deathEvents,
   reportPlayerHit,
   respawnToken,
+  museumMap,
+  onRegenerateMap,
 }) {
   const { remotePlayers, sendTransform } = multiplayer
   const showMuseumDebug = useMemo(() => {
     if (typeof window === 'undefined') return false
     return import.meta.env.DEV && new URLSearchParams(window.location.search).has('debugMuseum')
   }, [])
-  const DEFAULT_MAP_KEY = 'museum3d.defaultMap.v1'
-
-  const loadDefaultMap = () => {
-    if (typeof window === 'undefined') return null
-    try {
-      const raw = window.localStorage.getItem(DEFAULT_MAP_KEY)
-      if (!raw) return null
-      const parsed = JSON.parse(raw)
-      const seedText =
-        parsed && typeof parsed.seedText === 'string' ? parsed.seedText : null
-      const gridSize =
-        parsed && typeof parsed.gridSize === 'number' ? parsed.gridSize : null
-      if (!seedText || !gridSize) return null
-      const clampedSize = Math.max(500, Math.min(2500, Math.floor(gridSize)))
-      return { seedText, gridSize: clampedSize }
-    } catch {
-      return null
-    }
-  }
-
-  const persistDefaultMap = (seedText, gridSize) => {
-    if (typeof window === 'undefined') return
-    try {
-      window.localStorage.setItem(
-        DEFAULT_MAP_KEY,
-        JSON.stringify({ seedText, gridSize }),
-      )
-    } catch {
-      // Ignore storage failures.
-    }
-  }
-
-  // Default: reuse the same map on every start; only change with `P`.
-  const [museumSeedText, setMuseumSeedText] = useState(() => {
-    const stored = loadDefaultMap()
-    return stored?.seedText ?? `museum-seed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  })
-  const [museumGridSize, setMuseumGridSize] = useState(() => {
-    const stored = loadDefaultMap()
-    return stored?.gridSize ?? randomInt(500, 2500)
-  })
-  const [worldGenToken, setWorldGenToken] = useState(1)
-
+  const museumSeedText = museumMap?.seedText ?? 'museum-seed-alpha'
+  const museumGridSize = museumMap?.gridSize ?? 800
   const museum = useMemo(
     () => generateMuseumGrid(museumSeedText, museumGridSize),
     [museumSeedText, museumGridSize],
   )
 
-  useEffect(() => {
-    persistDefaultMap(museumSeedText, museumGridSize)
-  }, [museumSeedText, museumGridSize])
-
-  // Press `P` to generate a brand new map.
+  // Press `P` to generate and publish a brand new shared map.
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.code !== 'KeyP') return
-      setMuseumSeedText(`museum-seed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
-      setMuseumGridSize(randomInt(500, 2500))
-      setWorldGenToken((t) => t + 1)
+      onRegenerateMap?.()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [onRegenerateMap])
+  const worldGenToken = `${museumSeedText}:${museumGridSize}`
   const localPlayerStateRef = useRef({ x: 0, y: 0, z: 0, yaw: 0 })
   const handleLocalTransform = useCallback(
     (t) => {
