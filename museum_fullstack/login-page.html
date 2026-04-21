@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Personal Museum — Login">
+  <title>Personal Museum — Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="login-page-308">
+    <form class="login-card" id="login-form">
+      <p class="brand">MUSEUM</p>
+      <h1>Personal Museum</h1>
+
+      <div class="field">
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" autocomplete="username" required>
+      </div>
+
+      <div class="field">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" autocomplete="current-password" required minlength="6">
+      </div>
+
+      <p id="login-status" class="login-status" role="alert" aria-live="polite"></p>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary" id="btn-signin">Sign In</button>
+        <button type="button" class="btn" id="btn-signup">Create Account</button>
+      </div>
+
+      <a class="home-link" href="homepage-2.html">HOME</a>
+    </form>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="supabase-client.js"></script>
+  <script>
+    (async function () {
+      // If already signed in, skip straight to the home page.
+      const user = await museum.getUser();
+      if (user) window.location.replace("homepage-1.html");
+
+      const form = document.getElementById("login-form");
+      const status = document.getElementById("login-status");
+      const emailEl = document.getElementById("login-email");
+      const pwEl = document.getElementById("login-password");
+      const btnSignin = document.getElementById("btn-signin");
+      const btnSignup = document.getElementById("btn-signup");
+
+      function say(msg, kind = "info") {
+        status.textContent = msg;
+        status.dataset.kind = kind;
+      }
+
+      async function handle(kind) {
+        const email = emailEl.value.trim();
+        const password = pwEl.value;
+        if (!email || !password) {
+          say("Enter your email and password.", "error");
+          return;
+        }
+        btnSignin.disabled = btnSignup.disabled = true;
+        say(kind === "signup" ? "Creating account…" : "Signing in…");
+        try {
+          const { data, error } =
+            kind === "signup"
+              ? await museum.signUp(email, password)
+              : await museum.signIn(email, password);
+          if (error) throw error;
+          if (kind === "signup" && !data.session) {
+            say("Check your email to confirm the account, then sign in.", "info");
+          } else {
+            window.location.href = "homepage-1.html";
+          }
+        } catch (err) {
+          say(err.message || "Something went wrong.", "error");
+        } finally {
+          btnSignin.disabled = btnSignup.disabled = false;
+        }
+      }
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        handle("signin");
+      });
+      btnSignup.addEventListener("click", () => handle("signup"));
+    })();
+  </script>
+</body>
+</html>
