@@ -75,9 +75,14 @@ export function GameScene({
   respawnToken,
   museumMap,
   onRegenerateMap,
+  artworksReloadToken = 0,
 }) {
   const { remotePlayers, sendTransform } = multiplayer
   const userArtworks = useUserArtworks()
+  useEffect(() => {
+    if (artworksReloadToken <= 0) return
+    userArtworks.reload?.()
+  }, [artworksReloadToken, userArtworks.reload])
   const showMuseumDebug = useMemo(() => {
     if (typeof window === 'undefined') return false
     return import.meta.env.DEV && new URLSearchParams(window.location.search).has('debugMuseum')
@@ -161,6 +166,7 @@ export function GameScene({
         grid={museum.grid}
         meta={museum.meta}
         artworks={userArtworks.loading ? null : userArtworks.artworks}
+        artworksReloadToken={artworksReloadToken}
         debug={showMuseumDebug}
       />
       <ContactShadows

@@ -49,6 +49,8 @@ function MuseumSession({
   chat,
   museumMap,
   onRegenerateMap,
+  onReloadArtworks,
+  artworksReloadToken,
   onExitMuseum,
   onHostSessionClosed,
 }) {
@@ -159,6 +161,7 @@ function MuseumSession({
           respawnToken={multiplayer.respawnToken}
           museumMap={museumMap}
           onRegenerateMap={onRegenerateMap}
+          artworksReloadToken={artworksReloadToken}
         />
       </Canvas>
       <button
@@ -178,6 +181,24 @@ function MuseumSession({
         }}
       >
         Exit museum
+      </button>
+      <button
+        type="button"
+        onClick={onReloadArtworks}
+        style={{
+          position: 'fixed',
+          left: 16,
+          top: 62,
+          zIndex: 70,
+          padding: '8px 10px',
+          borderRadius: 8,
+          border: '1px solid rgba(255,255,255,0.35)',
+          background: 'rgba(30,20,20,0.55)',
+          color: '#fff7f2',
+          cursor: 'pointer',
+        }}
+      >
+        Reload paintings
       </button>
     </>
   )
@@ -380,6 +401,7 @@ function App() {
   )
   const [sessionCode, setSessionCode] = useState(() => readSessionCodeFromUrl())
   const [hasEnteredMuseum, setHasEnteredMuseum] = useState(false)
+  const [artworksReloadToken, setArtworksReloadToken] = useState(0)
   const sharedMuseum = useSharedMuseumMap(auth.user?.id, sessionCode)
 
   const handleEnterMuseum = useCallback(() => {
@@ -398,6 +420,9 @@ function App() {
   })
   const handleExitMuseum = useCallback(() => {
     setHasEnteredMuseum(false)
+  }, [])
+  const handleReloadArtworks = useCallback(() => {
+    setArtworksReloadToken((v) => v + 1)
   }, [])
   const handleSignOut = useCallback(async () => {
     setVisitorName('')
@@ -560,6 +585,8 @@ function App() {
         chat={sessionChat}
         museumMap={sharedMuseum.museumMap}
         onRegenerateMap={sharedMuseum.regenerateMap}
+        onReloadArtworks={handleReloadArtworks}
+        artworksReloadToken={artworksReloadToken}
         onExitMuseum={handleExitMuseum}
         onHostSessionClosed={() => {
           setHasEnteredMuseum(false)

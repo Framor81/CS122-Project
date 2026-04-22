@@ -14,6 +14,7 @@ export function MuseumLayout({
   grid,
   meta,
   artworks = [],
+  artworksReloadToken = 0,
   debug = false,
 }) {
   const wallParams = useMemo(
@@ -79,6 +80,7 @@ export function MuseumLayout({
           floorThickness={wallParams.floorThickness}
           wallThickness={wallParams.wallThickness}
           artworks={artworks}
+          reloadToken={artworksReloadToken}
         />
       ) : null}
 
