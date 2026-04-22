@@ -19,6 +19,8 @@ import { useSupabaseAuth } from './hooks/useSupabaseAuth.js'
 import { useSessionChat } from './hooks/useSessionChat.js'
 import { useSharedMuseumMap } from './hooks/useSharedMuseumMap.js'
 import { capsuleColorFromName } from './hooks/useCapsuleColorFromName.js'
+import { useUserArtworks } from './hooks/useUserArtworks.js'
+import { useArtworksReady } from './hooks/useArtworksReady.js'
 
 function sanitizeSessionCode(value) {
   if (typeof value !== 'string') return ''
@@ -57,6 +59,27 @@ function MuseumSession({
   const [chatOpen, setChatOpen] = useState(false)
   const inputRef = useGameInput({ disabled: chatOpen })
   const multiplayer = useMultiplayer(displayName, sessionCode)
+  const userArtworks = useUserArtworks()
+  // Trigger artwork data reload (re-signed URLs etc.) when the parent bumps
+  // the reload token via the "Reload paintings" button.
+  useEffect(() => {
+    if (!artworksReloadToken || artworksReloadToken <= 0) return
+    userArtworks.reload?.()
+    // We intentionally don't depend on userArtworks.reload to avoid a loop;
+    // reload is stable enough across renders for this use.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artworksReloadToken])
+  const artworkUrls = useMemo(
+    () =>
+      (userArtworks.artworks || [])
+        .map((a) => a?.imageUrl)
+        .filter(Boolean),
+    [userArtworks.artworks],
+  )
+  const artworkReadiness = useArtworksReady(artworkUrls, {
+    enabled: !userArtworks.loading,
+  })
+  const museumReady = !userArtworks.loading && artworkReadiness.ready
   const remoteCount = Object.keys(multiplayer.remotePlayers).length
   const combatEnabled = useCombatMode()
   const combatHud = useCombatHudState()
@@ -140,6 +163,12 @@ function MuseumSession({
         </>
       ) : null}
       <SessionClosingOverlay remaining={multiplayer.sessionCloseRemaining} />
+      <MuseumLoadingOverlay
+        visible={!museumReady}
+        loaded={artworkReadiness.loaded}
+        total={artworkReadiness.total}
+        artworksLoading={userArtworks.loading}
+      />
       <Canvas
         shadows
         camera={{ position: [0, 2.5, 10], fov: 60 }}
@@ -161,6 +190,8 @@ function MuseumSession({
           respawnToken={multiplayer.respawnToken}
           museumMap={museumMap}
           onRegenerateMap={onRegenerateMap}
+          artworks={userArtworks.artworks}
+          artworksLoading={userArtworks.loading}
           artworksReloadToken={artworksReloadToken}
         />
       </Canvas>
@@ -250,6 +281,60 @@ function ControlsHint() {
       <div>F - dolphin dive</div>
       <div>C - crouch</div>
       <div>R - reload</div>
+    </div>
+  )
+}
+
+function MuseumLoadingOverlay({ visible, loaded, total, artworksLoading }) {
+  if (!visible) return null
+  const pct = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0
+  const label = artworksLoading
+    ? 'Fetching your collection…'
+    : total === 0
+      ? 'Preparing the gallery…'
+      : `Loading paintings… ${loaded}/${total}`
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 200,
+        background:
+          'radial-gradient(circle at 50% 40%, #1d1410 0%, #0a0606 70%)',
+        color: '#ffe9d9',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'column',
+        gap: 18,
+        fontFamily: '"Playfair Display", serif',
+      }}
+    >
+      <div style={{ fontSize: 32, letterSpacing: 1, fontWeight: 600 }}>
+        Entering the museum
+      </div>
+      <div
+        style={{
+          width: 320,
+          height: 6,
+          borderRadius: 999,
+          background: 'rgba(255,255,255,0.10)',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: '100%',
+            background:
+              'linear-gradient(90deg, #d4a574 0%, #f7e3c9 50%, #d4a574 100%)',
+            transition: 'width 200ms ease',
+          }}
+        />
+      </div>
+      <div style={{ fontSize: 13, opacity: 0.75, fontFamily: 'Inter, sans-serif' }}>
+        {label}
+      </div>
     </div>
   )
 }

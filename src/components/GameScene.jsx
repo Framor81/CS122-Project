@@ -7,7 +7,6 @@ import { Player } from './Player.jsx'
 import { RemotePlayers } from './RemotePlayers.jsx'
 import { MuseumLayout } from '../world/MuseumLayout.jsx'
 import { generateMuseumGrid } from '../world/generateMuseumGrid.js'
-import { useUserArtworks } from '../hooks/useUserArtworks.js'
 
 // Pastel terracotta / playroom palette
 const SKY = '#ffe5dc'
@@ -75,14 +74,11 @@ export function GameScene({
   respawnToken,
   museumMap,
   onRegenerateMap,
+  artworks = null,
+  artworksLoading = false,
   artworksReloadToken = 0,
 }) {
   const { remotePlayers, sendTransform } = multiplayer
-  const userArtworks = useUserArtworks()
-  useEffect(() => {
-    if (artworksReloadToken <= 0) return
-    userArtworks.reload?.()
-  }, [artworksReloadToken, userArtworks.reload])
   const showMuseumDebug = useMemo(() => {
     if (typeof window === 'undefined') return false
     return import.meta.env.DEV && new URLSearchParams(window.location.search).has('debugMuseum')
@@ -165,7 +161,7 @@ export function GameScene({
         seed={museumSeedText}
         grid={museum.grid}
         meta={museum.meta}
-        artworks={userArtworks.loading ? null : userArtworks.artworks}
+        artworks={artworksLoading ? null : artworks}
         artworksReloadToken={artworksReloadToken}
         debug={showMuseumDebug}
       />
