@@ -59,6 +59,18 @@ export function useSupabaseAuth() {
     return { error: authError }
   }, [])
 
+  const updateUsername = useCallback(async (username) => {
+    if (!supabase) return { error: { message: 'Supabase not configured.' } }
+    const nextUsername = (username || '').trim().slice(0, 24)
+    if (!nextUsername) return { error: { message: 'Username is required.' } }
+    setError('')
+    const { error: authError } = await supabase.auth.updateUser({
+      data: { username: nextUsername },
+    })
+    if (authError) setError(authError.message)
+    return { error: authError }
+  }, [])
+
   const signOut = useCallback(async () => {
     if (!supabase) return
     setError('')
@@ -89,7 +101,11 @@ export function useSupabaseAuth() {
     hasSupabaseConfig,
     signIn,
     signUp,
+    updateUsername,
     signOut,
+    userNeedsUsername:
+      !session?.user?.user_metadata?.username ||
+      String(session.user.user_metadata.username).trim().length === 0,
   }
 }
 

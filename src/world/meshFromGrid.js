@@ -87,28 +87,48 @@ export function meshFromGrid(grid, params = {}) {
       if (grid.get(x, z) !== CELL_FLOOR) continue
       const [wx, wz] = grid.cellToWorld(x, z)
 
+      // North side of cell: wall sits at wz - cs/2; interior is +Z.
       if (grid.get(x, z - 1) !== CELL_FLOOR) {
         walls.push({
           center: [wx, wallY, wz - cs / 2],
           size: [cs, wallHeight, wallThickness],
+          axis: 'x',
+          normal: [0, 0, 1],
+          cellAlong: x,
+          cellPerp: z,
         })
       }
+      // South side of cell: wall sits at wz + cs/2; interior is -Z.
       if (grid.get(x, z + 1) !== CELL_FLOOR) {
         walls.push({
           center: [wx, wallY, wz + cs / 2],
           size: [cs, wallHeight, wallThickness],
+          axis: 'x',
+          normal: [0, 0, -1],
+          cellAlong: x,
+          cellPerp: z,
         })
       }
+      // West side of cell: wall sits at wx - cs/2; interior is +X.
       if (grid.get(x - 1, z) !== CELL_FLOOR) {
         walls.push({
           center: [wx - cs / 2, wallY, wz],
           size: [wallThickness, wallHeight, cs],
+          axis: 'z',
+          normal: [1, 0, 0],
+          cellAlong: z,
+          cellPerp: x,
         })
       }
+      // East side of cell: wall sits at wx + cs/2; interior is -X.
       if (grid.get(x + 1, z) !== CELL_FLOOR) {
         walls.push({
           center: [wx + cs / 2, wallY, wz],
           size: [wallThickness, wallHeight, cs],
+          axis: 'z',
+          normal: [-1, 0, 0],
+          cellAlong: z,
+          cellPerp: x,
         })
       }
     }

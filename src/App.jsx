@@ -5,14 +5,18 @@ import { CombatHud } from './gamemode/CombatHud.jsx'
 import { MultiplayerHud } from './components/MultiplayerHud.jsx'
 import { ScoreboardOverlay } from './components/ScoreboardOverlay.jsx'
 import { GameScene } from './components/GameScene.jsx'
+import { SessionChat } from './components/SessionChat.jsx'
 import { AuthGate } from './screens/AuthGate.jsx'
 import { SessionGate } from './screens/SessionGate.jsx'
 import { SessionLobby } from './screens/SessionLobby.jsx'
+import { UsernameSetupGate } from './screens/UsernameSetupGate.tsx'
+import { MuseumWebApp } from './screens/MuseumWebApp.tsx'
 import { useGameInput } from './hooks/useGameInput.js'
 import { useMultiplayer } from './hooks/useMultiplayer.js'
 import { useCombatMode } from './gamemode/useCombatMode.js'
 import { useCombatHudState } from './gamemode/useCombatHudState.js'
 import { useSupabaseAuth } from './hooks/useSupabaseAuth.js'
+import { useSessionChat } from './hooks/useSessionChat.js'
 import { useSharedMuseumMap } from './hooks/useSharedMuseumMap.js'
 import { capsuleColorFromName } from './hooks/useCapsuleColorFromName.js'
 
@@ -21,12 +25,18 @@ function sanitizeSessionCode(value) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12)
 }
 
+const RESERVED_TOP_LEVEL_PATHS = new Set(['museum', '3d'])
+
 function readSessionCodeFromUrl() {
   if (typeof window === 'undefined') return null
   const pathParts = window.location.pathname.split('/').filter(Boolean)
   if (pathParts[0] === 'session' && pathParts[1]) {
-    const fromPath = sanitizeSessionCode(pathParts[1])
-    if (fromPath) return fromPath
+    const fromLegacyPath = sanitizeSessionCode(pathParts[1])
+    if (fromLegacyPath) return fromLegacyPath
+  }
+  if (pathParts.length === 1 && !RESERVED_TOP_LEVEL_PATHS.has(pathParts[0])) {
+    const fromPath = sanitizeSessionCode(pathParts[0])
+    if (fromPath && fromPath.length >= 4) return fromPath
   }
   const qs = new URLSearchParams(window.location.search)
   const fromQuery = sanitizeSessionCode(qs.get('session') || '')
@@ -36,12 +46,14 @@ function readSessionCodeFromUrl() {
 function MuseumSession({
   displayName,
   sessionCode,
+  chat,
   museumMap,
   onRegenerateMap,
   onExitMuseum,
   onHostSessionClosed,
 }) {
-  const inputRef = useGameInput()
+  const [chatOpen, setChatOpen] = useState(false)
+  const inputRef = useGameInput({ disabled: chatOpen })
   const multiplayer = useMultiplayer(displayName, sessionCode)
   const remoteCount = Object.keys(multiplayer.remotePlayers).length
   const combatEnabled = useCombatMode()
@@ -100,6 +112,13 @@ function MuseumSession({
         Session: {sessionCode}
       </div>
       <ScoreboardOverlay players={lobbyPlayers} showCombatStats={combatEnabled} />
+      <SessionChat
+        chat={chat}
+        top={118}
+        width={360}
+        maxHeight={360}
+        onOpenChange={setChatOpen}
+      />
       {combatEnabled ? <ControlsHint /> : null}
       {combatEnabled ? (
         <>
@@ -119,10 +138,15 @@ function MuseumSession({
         </>
       ) : null}
       <SessionClosingOverlay remaining={multiplayer.sessionCloseRemaining} />
-      <Canvas shadows camera={{ position: [0, 2.5, 10], fov: 60 }}>
+      <Canvas
+        shadows
+        camera={{ position: [0, 2.5, 10], fov: 60 }}
+        style={{ position: 'fixed', inset: 0, zIndex: 0 }}
+      >
         <GameScene
           displayName={displayName}
           inputRef={inputRef}
+          chatOpen={chatOpen}
           multiplayer={multiplayer}
           combatEnabled={combatEnabled}
           onGunStateChange={combatHud.onGunStateChange}
@@ -234,7 +258,7 @@ function SessionClosingOverlay({ remaining }) {
   )
 }
 
-function AccountTopBar({ displayName, onSignOut }) {
+function AccountTopBar({ displayName, onSignOut, onHome }) {
   const capsuleColor = capsuleColorFromName(displayName || 'Visitor')
   return (
     <div
@@ -248,6 +272,22 @@ function AccountTopBar({ displayName, onSignOut }) {
         gap: 10,
       }}
     >
+      {onHome ? (
+        <button
+          type="button"
+          onClick={onHome}
+          style={{
+            padding: '8px 10px',
+            borderRadius: 8,
+            border: '1px solid rgba(255,255,255,0.35)',
+            background: 'rgba(30,20,20,0.55)',
+            color: '#fff7f2',
+            cursor: 'pointer',
+          }}
+        >
+          Home
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={onSignOut}
@@ -335,6 +375,9 @@ function AccountTopBar({ displayName, onSignOut }) {
 function App() {
   const auth = useSupabaseAuth()
   const [visitorName, setVisitorName] = useState('')
+  const [pathname, setPathname] = useState(() =>
+    typeof window !== 'undefined' ? window.location.pathname : '/',
+  )
   const [sessionCode, setSessionCode] = useState(() => readSessionCodeFromUrl())
   const [hasEnteredMuseum, setHasEnteredMuseum] = useState(false)
   const sharedMuseum = useSharedMuseumMap(auth.user?.id, sessionCode)
@@ -348,6 +391,11 @@ function App() {
     auth.user?.user_metadata?.username ||
     auth.user?.email?.split('@')[0] ||
     'Visitor'
+  const sessionChat = useSessionChat({
+    sessionCode: sessionCode || '',
+    userId: auth.user?.id || '',
+    displayName: effectiveDisplayName,
+  })
   const handleExitMuseum = useCallback(() => {
     setHasEnteredMuseum(false)
   }, [])
@@ -357,20 +405,42 @@ function App() {
     setHasEnteredMuseum(false)
     if (typeof window !== 'undefined') {
       window.history.pushState({}, '', '/')
+      setPathname('/')
     }
     await auth.signOut()
   }, [auth])
+  const handleNavigate3D = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/3d')
+      setPathname('/3d')
+      setSessionCode(null)
+      setHasEnteredMuseum(false)
+    }
+  }, [])
+  const handleReturnHome = useCallback(() => {
+    setSessionCode(null)
+    setHasEnteredMuseum(false)
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/')
+      setPathname('/')
+    }
+  }, [])
   const handleSessionSelect = useCallback((code) => {
     const normalized = sanitizeSessionCode(code)
     setSessionCode(normalized || null)
     setHasEnteredMuseum(false)
     if (typeof window !== 'undefined' && normalized) {
-      window.history.pushState({}, '', `/session/${normalized}`)
+      window.history.pushState({}, '', `/${normalized}`)
+      setPathname(`/${normalized}`)
     }
   }, [])
 
   useEffect(() => {
     const onPop = () => {
+      if (window.location.pathname === '/museum/home') {
+        window.history.replaceState({}, '', '/')
+      }
+      setPathname(window.location.pathname)
       const code = readSessionCodeFromUrl()
       setSessionCode(code)
       setHasEnteredMuseum(false)
@@ -381,6 +451,37 @@ function App() {
 
   if (auth.loading || (sessionCode && sharedMuseum.loading)) {
     return <div className="museum-gate">Loading...</div>
+  }
+
+  if (pathname === '/museum/home') {
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({}, '', '/')
+      setPathname('/')
+    }
+    return null
+  }
+
+  if (pathname === '/' || pathname.startsWith('/museum')) {
+    if (auth.user && auth.userNeedsUsername) {
+      return (
+        <UsernameSetupGate
+          error={auth.error}
+          onSave={async (username) => {
+            const result = await auth.updateUsername(username)
+            if (!result.error) setVisitorName(username.trim())
+            return result
+          }}
+        />
+      )
+    }
+    return (
+      <MuseumWebApp
+        auth={auth}
+        displayName={effectiveDisplayName}
+        onSignedInName={(username) => setVisitorName(username)}
+        onNavigate3D={handleNavigate3D}
+      />
+    )
   }
 
   if (!auth.user) {
@@ -402,10 +503,27 @@ function App() {
     )
   }
 
+  if (auth.userNeedsUsername) {
+    return (
+      <UsernameSetupGate
+        error={auth.error}
+        onSave={async (username) => {
+          const result = await auth.updateUsername(username)
+          if (!result.error) setVisitorName(username.trim())
+          return result
+        }}
+      />
+    )
+  }
+
   if (!sessionCode) {
     return (
       <>
-        <AccountTopBar displayName={effectiveDisplayName} onSignOut={handleSignOut} />
+        <AccountTopBar
+          displayName={effectiveDisplayName}
+          onSignOut={handleSignOut}
+          onHome={handleReturnHome}
+        />
         <SessionGate onSelectSession={handleSessionSelect} userId={auth.user.id} />
       </>
     )
@@ -414,10 +532,15 @@ function App() {
   if (!hasEnteredMuseum) {
     return (
       <>
-        <AccountTopBar displayName={effectiveDisplayName} onSignOut={handleSignOut} />
+        <AccountTopBar
+          displayName={effectiveDisplayName}
+          onSignOut={handleSignOut}
+          onHome={handleReturnHome}
+        />
         <SessionLobby
           displayName={effectiveDisplayName}
           sessionCode={sessionCode}
+          chat={sessionChat}
           onEnterMuseum={handleEnterMuseum}
         />
       </>
@@ -426,10 +549,15 @@ function App() {
 
   return (
     <>
-      <AccountTopBar displayName={effectiveDisplayName} onSignOut={handleSignOut} />
+      <AccountTopBar
+        displayName={effectiveDisplayName}
+        onSignOut={handleSignOut}
+        onHome={handleReturnHome}
+      />
       <MuseumSession
         displayName={effectiveDisplayName}
         sessionCode={sessionCode}
+        chat={sessionChat}
         museumMap={sharedMuseum.museumMap}
         onRegenerateMap={sharedMuseum.regenerateMap}
         onExitMuseum={handleExitMuseum}
@@ -438,6 +566,7 @@ function App() {
           setSessionCode(null)
           if (typeof window !== 'undefined') {
             window.history.pushState({}, '', '/')
+            setPathname('/')
           }
         }}
       />

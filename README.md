@@ -2,11 +2,11 @@
 
 Personal Museum is a two-part web app:
 
-- `museum_fullstack/` contains the first museum experience: login, collection,
-  artwork upload, and AI artwork recognition.
+- `/museum/*` routes in the React app provide login, collection, artwork upload,
+  and AI artwork recognition.
 - The repo-root React/Vite app contains the 3D multiplayer museum experience.
 
-The static museum pages route into the 3D app with `/`.
+Both experiences share the same Supabase backend.
 
 ## Local Development
 
@@ -25,7 +25,7 @@ npm run dev
 Open the first museum page:
 
 ```text
-http://localhost:5173/museum_fullstack/homepage-2.html
+http://localhost:5173/
 ```
 
 To run the Vite app and local Socket.IO multiplayer server together:
@@ -46,11 +46,11 @@ NEXT_PUBLIC_SUPABASE_URL=https://djydtidnjokygfrlvglw.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-anon-public-key
 ```
 
-The static pages use Supabase browser config in `museum_fullstack/config.js`.
+The React app reads Supabase config from `.env`.
 
 ## Backend Setup
 
-See `museum_fullstack/SETUP.md` for Supabase schema, storage policies,
+See `docs/SUPABASE_SETUP.md` for schema, storage policies,
 OpenRouter artwork recognition, and Edge Function deployment.
 
 Artwork recognition uses an OpenRouter key stored as a Supabase Edge Function

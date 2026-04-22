@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient.js'
+import { debugReport } from '../lib/debugBus.js'
 
 async function attachSignedUrls(rows) {
   if (!supabase) return []
@@ -47,20 +48,32 @@ export function useUserArtworks(userId) {
     setError('')
     const { data, error: queryError } = await supabase
       .from('artworks')
-      .select('id,title,artist,date_text,themes,image_path,status,updated_at,created_at')
+      .select(
+        'id,title,artist,period,date_text,medium,dimensions,location_guess,description,themes,image_path,status,updated_at,created_at',
+      )
       .eq('user_id', ownerId)
       .order('created_at', { ascending: false })
       .limit(48)
 
     if (queryError) {
-      setError(queryError.message || 'Could not load artworks.')
+      const message = queryError.message || 'Could not load artworks.'
+      setError(message)
       setArtworks([])
       setLoading(false)
+      debugReport(`Artworks query failed: ${message}`, 'error')
       return
     }
 
     const withUrls = await attachSignedUrls(data || [])
-    setArtworks(withUrls.filter((art) => art.imageUrl))
+    const final = withUrls.filter((art) => art.imageUrl)
+    const dropped = withUrls.length - final.length
+    if (dropped > 0) {
+      debugReport(
+        `${dropped} artwork(s) had no signed image URL and were skipped.`,
+        'warn',
+      )
+    }
+    setArtworks(final)
     setLoading(false)
   }, [resolvedUserId, userId])
 

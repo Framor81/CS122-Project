@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 
 const LOOK_SENSITIVITY = 0.002
 
-export function useGameInput() {
+export function useGameInput({ disabled = false } = {}) {
   const stateRef = useRef({
     forward: false,
     backward: false,
@@ -15,11 +15,27 @@ export function useGameInput() {
     pitch: 0,
     jumpQueued: false,
   })
+  const disabledRef = useRef(Boolean(disabled))
+
+  useEffect(() => {
+    disabledRef.current = Boolean(disabled)
+    if (!disabledRef.current) return
+    const s = stateRef.current
+    s.forward = false
+    s.backward = false
+    s.left = false
+    s.right = false
+    s.sprint = false
+    s.crouch = false
+    s.dive = false
+    s.jumpQueued = false
+  }, [disabled])
 
   useEffect(() => {
     const s = stateRef.current
 
     const keyDown = (event) => {
+      if (disabledRef.current) return
       if (event.code === 'KeyW') s.forward = true
       if (event.code === 'KeyS') s.backward = true
       if (event.code === 'KeyA') s.left = true
@@ -35,6 +51,7 @@ export function useGameInput() {
     }
 
     const keyUp = (event) => {
+      if (disabledRef.current) return
       if (event.code === 'KeyW') s.forward = false
       if (event.code === 'KeyS') s.backward = false
       if (event.code === 'KeyA') s.left = false
@@ -45,6 +62,7 @@ export function useGameInput() {
     }
 
     const mouseMove = (event) => {
+      if (disabledRef.current) return
       if (!document.pointerLockElement) return
       s.yaw -= event.movementX * LOOK_SENSITIVITY
       s.pitch += event.movementY * LOOK_SENSITIVITY

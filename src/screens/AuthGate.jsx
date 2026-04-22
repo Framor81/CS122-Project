@@ -14,9 +14,9 @@ export function AuthGate({ hasConfig, onSignIn, onSignUp, error }) {
   const [localError, setLocalError] = useState('')
 
   const canSubmit =
-    username.trim().length > 0 &&
     email.trim().length > 3 &&
     password.length >= 6 &&
+    (mode === 'signin' || username.trim().length > 0) &&
     !busy
 
   const submit = useCallback(async () => {
@@ -34,7 +34,7 @@ export function AuthGate({ hasConfig, onSignIn, onSignUp, error }) {
       <PageWhimsy />
       <div className="museum-gate__panel">
         <div className="museum-gate__title-row">
-          <h1 className="museum-gate__title">Sign In</h1>
+          <h1 className="museum-gate__title">{mode === 'signin' ? 'Sign In' : 'Create Account'}</h1>
           <span className="museum-gate__info-wrap">
             <button
               type="button"
@@ -62,7 +62,7 @@ export function AuthGate({ hasConfig, onSignIn, onSignUp, error }) {
         ) : null}
 
         <label className="museum-gate__label" htmlFor={userId}>
-          Username
+          Username {mode === 'signup' ? '' : '(optional)'}
         </label>
         <input
           id={userId}
@@ -72,7 +72,7 @@ export function AuthGate({ hasConfig, onSignIn, onSignUp, error }) {
           maxLength={24}
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="How you'll appear in game"
+          placeholder={mode === 'signup' ? "Required for new accounts" : 'Set now or later'}
         />
 
         <label className="museum-gate__label" htmlFor={emailId}>

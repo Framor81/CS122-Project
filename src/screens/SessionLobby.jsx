@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useMultiplayer } from '../hooks/useMultiplayer.js'
+import { SessionChat } from '../components/SessionChat.jsx'
 import './MuseumGate.css'
 import { PageWhimsy } from './PageWhimsy.jsx'
 
-export function SessionLobby({ displayName, sessionCode, onEnterMuseum }) {
+export function SessionLobby({ displayName, sessionCode, chat, onEnterMuseum }) {
   const multiplayer = useMultiplayer(displayName, sessionCode)
   const [copied, setCopied] = useState(false)
 
@@ -30,6 +31,7 @@ export function SessionLobby({ displayName, sessionCode, onEnterMuseum }) {
   return (
     <div className="museum-gate">
       <PageWhimsy />
+      <SessionChat chat={chat} top={98} width={330} maxHeight={360} />
       <div className="museum-gate__session-layout">
         <section className="museum-gate__session-box museum-gate__session-box--main">
           <h1 className="museum-gate__title">Session Lobby</h1>

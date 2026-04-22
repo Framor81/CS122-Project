@@ -62,6 +62,7 @@ function MovingSunLight() {
 export function GameScene({
   displayName,
   inputRef,
+  chatOpen = false,
   multiplayer,
   combatEnabled,
   onGunStateChange,
@@ -159,7 +160,7 @@ export function GameScene({
         seed={museumSeedText}
         grid={museum.grid}
         meta={museum.meta}
-        artworks={userArtworks.artworks}
+        artworks={userArtworks.loading ? null : userArtworks.artworks}
         debug={showMuseumDebug}
       />
       <ContactShadows
@@ -205,7 +206,7 @@ export function GameScene({
         onTransform={handleLocalTransform}
       />
 
-      <PointerLockControls selector="body" />
+      <PointerLockControls selector="body" enabled={!chatOpen} />
       <Text
         position={[0, 3.6, -2]}
         color="#8b4e46"
@@ -217,7 +218,9 @@ export function GameScene({
         maxWidth={4.5}
         textAlign="center"
       >
-        {`Click to lock • WASD move • Space jump`}
+        {chatOpen
+          ? 'Chat open • Press Esc to close'
+          : 'Click to lock • WASD move • Space jump • Enter chat'}
       </Text>
     </>
   )
