@@ -48,7 +48,7 @@ This creates:
 The app uses OpenRouter for AI artwork recognition. The default model is:
 
 ```text
-google/gemma-4-31b-it:free
+nvidia/nemotron-nano-12b-v2-vl:free
 ```
 
 To get an OpenRouter key:
@@ -69,7 +69,7 @@ supabase secrets set OPENROUTER_API_KEY=sk-or-your-key-here
 Optional: override the model without changing code:
 
 ```bash
-supabase secrets set OPENROUTER_MODEL=google/gemma-4-31b-it:free
+supabase secrets set OPENROUTER_MODEL=nvidia/nemotron-nano-12b-v2-vl:free
 ```
 
 Free OpenRouter models are rate-limited. This is fine for a low-volume class
