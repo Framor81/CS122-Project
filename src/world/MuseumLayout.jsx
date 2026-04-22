@@ -1,7 +1,9 @@
 import { Text } from '@react-three/drei'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { generateMuseumGrid } from './generateMuseumGrid.js'
 import { meshFromGrid } from './meshFromGrid.js'
+import { FramesLayer } from './FramesLayer.jsx'
+import { debugReport } from '../lib/debugBus.js'
 
 const FLOOR_COLOR = '#ead9cf'
 const WALL_COLOR_A = '#f4ebe4'
@@ -11,20 +13,38 @@ export function MuseumLayout({
   seed = 'museum-seed-alpha',
   grid,
   meta,
+  artworks = [],
   debug = false,
 }) {
+  const wallParams = useMemo(
+    () => ({
+      floorThickness: 0.12,
+      wallHeight: 7.8,
+      wallThickness: 0.22,
+      ceilingThickness: 0.1,
+    }),
+    [],
+  )
+
   const { mesh, usedMeta } = useMemo(() => {
     const generated = grid && meta ? { grid, meta } : generateMuseumGrid(seed)
     return {
-      mesh: meshFromGrid(generated.grid, {
-        floorThickness: 0.12,
-        wallHeight: 7.8,
-        wallThickness: 0.22,
-        ceilingThickness: 0.1,
-      }),
+      mesh: meshFromGrid(generated.grid, wallParams),
       usedMeta: generated.meta,
     }
-  }, [seed, grid, meta])
+  }, [seed, grid, meta, wallParams])
+
+  useEffect(() => {
+    if (!Array.isArray(artworks)) return
+    if (artworks.length === 0) {
+      debugReport('Collection is empty — generating procedural empty frames.', 'warn')
+    } else {
+      debugReport(
+        `Collection contains ${artworks.length} artwork(s). Distributing one frame per artwork onto the largest wall runs.`,
+        'info',
+      )
+    }
+  }, [artworks])
 
   return (
     <group>
@@ -51,6 +71,16 @@ export function MuseumLayout({
           <meshStandardMaterial color="#e3d5c6" roughness={0.98} />
         </mesh>
       ))}
+
+      {Array.isArray(artworks) ? (
+        <FramesLayer
+          walls={mesh.walls}
+          wallHeight={wallParams.wallHeight}
+          floorThickness={wallParams.floorThickness}
+          wallThickness={wallParams.wallThickness}
+          artworks={artworks}
+        />
+      ) : null}
 
       {debug ? (
         <>
@@ -92,7 +122,7 @@ export function MuseumLayout({
             maxWidth={8}
             textAlign="center"
           >
-            {`debug: seed=${usedMeta.seedText}\nfloorCells=${mesh.stats.floorCells}, floorMeshes=${mesh.stats.floorMeshes}, wallMeshes=${mesh.stats.wallMeshes}`}
+            {`debug: seed=${usedMeta.seedText}\nfloorCells=${mesh.stats.floorCells}, floorMeshes=${mesh.stats.floorMeshes}, wallMeshes=${mesh.stats.wallMeshes}, artworks=${Array.isArray(artworks) ? artworks.length : 'loading'}`}
           </Text>
         </>
       ) : null}

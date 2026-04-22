@@ -1,16 +1,62 @@
-# React + Vite
+# Personal Museum
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Personal Museum is a two-part web app:
 
-Currently, two official plugins are available:
+- `/museum/*` routes in the React app provide login, collection, artwork upload,
+  and AI artwork recognition.
+- The repo-root React/Vite app contains the 3D multiplayer museum experience.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Both experiences share the same Supabase backend.
 
-## React Compiler
+## Local Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Install dependencies:
 
-## Expanding the ESLint configuration
+```bash
+npm install
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Run the frontend:
+
+```bash
+npm run dev
+```
+
+Open the first museum page:
+
+```text
+http://localhost:5173/
+```
+
+To run the Vite app and local Socket.IO multiplayer server together:
+
+```bash
+npm run dev:all
+```
+
+## Environment
+
+Create a repo-root `.env` for the React app and multiplayer server. `.env` is
+gitignored.
+
+```bash
+VITE_MULTIPLAYER_URL=https://cs122-server.onrender.com
+FRONTEND_ORIGIN=https://cs122-project.vercel.app
+NEXT_PUBLIC_SUPABASE_URL=https://djydtidnjokygfrlvglw.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-anon-public-key
+```
+
+The React app reads Supabase config from `.env`.
+
+## Backend Setup
+
+See `docs/SUPABASE_SETUP.md` for schema, storage policies,
+OpenRouter artwork recognition, and Edge Function deployment.
+
+Artwork recognition uses an OpenRouter key stored as a Supabase Edge Function
+secret:
+
+```bash
+supabase secrets set OPENROUTER_API_KEY=sk-or-your-key-here
+supabase functions deploy recognize-artwork
+```

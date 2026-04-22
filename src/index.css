@@ -1,10 +1,32 @@
+@import "tailwindcss";
+
+html,
 body {
   margin: 0;
-  overflow: hidden;
+  background-color: #080808;
+}
+
+body {
+  overflow-x: hidden;
+  overflow-y: auto;
   font-family: 'Fredoka', 'Segoe UI Rounded', 'Nunito', system-ui, sans-serif;
+  /* Extend the dark page background well past the viewport so any
+     over-scroll (rubber-band) area stays on-brand instead of flashing white. */
+  background-color: #080808;
+  background-image: radial-gradient(
+    ellipse at center top,
+    rgba(212, 185, 120, 0.04),
+    transparent 70%
+  );
+}
+
+html {
+  /* Match rubber-band/overscroll color on iOS/macOS Safari. */
+  background-color: #080808;
 }
 
 #root {
   width: 100vw;
-  height: 100vh;
+  min-height: 100vh;
+  background-color: #080808;
 }
