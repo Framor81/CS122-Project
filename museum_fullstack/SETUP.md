@@ -1,151 +1,162 @@
-# Personal Museum — Backend Setup
+# Personal Museum — Setup
 
-This connects your static HTML prototype to a real backend: Supabase handles
-auth + storage + database, and a Supabase Edge Function calls the Claude API
-for artwork recognition. API keys stay server-side.
+This project has two connected parts:
 
-Time: about 20-30 minutes the first time.
+- `museum_fullstack/` is the first museum experience: login, collection,
+  artwork upload, and AI artwork recognition.
+- The React/Vite app at the repo root is the 3D multiplayer museum. Static
+  `3D MUSEUM` links route there with `/`.
 
----
+Use one Supabase project for both parts. Do not create a second Supabase
+project unless you intentionally want a separate dev/prod backend.
 
-## 1. Create a Supabase project
+## 1. Supabase Project
 
-1. Go to https://supabase.com and sign up (free tier is fine).
-2. Click **New project**. Pick any name (e.g. `personal-museum`), a strong DB
-   password, and the region nearest you.
-3. Wait until the project is ready. On the left sidebar open **Settings ->
-   API**. You will need two values:
-   - **Project URL** (looks like `https://abcd1234.supabase.co`)
-   - **anon public key** (a long `eyJ...` string)
+Use the existing Supabase project:
 
----
-
-## 2. Run the schema
-
-1. In the Supabase dashboard open **SQL Editor -> New query**.
-2. Copy the entire contents of `supabase/schema.sql` from this folder and paste
-   it in. Click **Run**.
-3. This creates the `artworks` table, row-level security policies, and the
-   private `artworks` storage bucket.
-
----
-
-## 3. Fill in `config.js`
-
-Open `config.js` and paste the two values from step 1:
-
-```js
-window.MUSEUM_CONFIG = {
-  SUPABASE_URL: "https://abcd1234.supabase.co",
-  SUPABASE_ANON_KEY: "eyJ...your-anon-key...",
-};
+```text
+https://djydtidnjokygfrlvglw.supabase.co
 ```
 
-The anon key is designed to be public — it only gives access to what your RLS
-policies allow, which is "this user's own rows."
-
----
-
-## 4. Turn off email confirmation (optional, for dev)
-
-In **Authentication -> Providers -> Email**, toggle off **Confirm email** while
-you are testing, so "Create Account" logs you in instantly. You can turn it
-back on before shipping to real users.
-
----
-
-## 5. Get an Anthropic API key
-
-1. Go to https://console.anthropic.com, sign in, open **API Keys**.
-2. Create a new key. Copy it (starts with `sk-ant-...`).
-3. Add at least a few dollars of credit on the billing page.
-
----
-
-## 6. Deploy the Edge Function
-
-You need the Supabase CLI. Install it:
-
-- Mac: `brew install supabase/tap/supabase`
-- Other: https://supabase.com/docs/guides/cli/getting-started
-
-Then, from this `museum_frontend/` folder:
+The static pages read browser-safe values from `museum_fullstack/config.js`.
+The React app reads them from the repo-root `.env`:
 
 ```bash
-# 1. Log in once
+NEXT_PUBLIC_SUPABASE_URL=https://djydtidnjokygfrlvglw.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-anon-public-key
+```
+
+The anon/publishable key is safe to expose in browser code. Never expose the
+Supabase service role key or any AI provider key in frontend files.
+
+## 2. Run The Database Schema
+
+In Supabase, open **SQL Editor -> New query**. Copy the contents of
+`museum_fullstack/supabase/schema.sql` and run it.
+
+This creates:
+
+- `artworks`
+- private `artworks` storage bucket
+- storage policies for user-owned uploads
+- `museum_sessions`
+- `user_museums`
+- realtime publication entries for `artworks` and `museum_sessions`
+
+## 3. OpenRouter Key For Artwork Recognition
+
+The app uses OpenRouter for AI artwork recognition. The default model is:
+
+```text
+google/gemma-4-31b-it:free
+```
+
+To get an OpenRouter key:
+
+1. Go to `https://openrouter.ai/keys`.
+2. Sign in with your OpenRouter account.
+3. Click **Create Key**.
+4. Give it a name like `personal-museum-dev`.
+5. Optional but recommended: set a small credit limit.
+6. Copy the key. It starts with `sk-or-`.
+
+Store it as a Supabase Edge Function secret:
+
+```bash
+supabase secrets set OPENROUTER_API_KEY=sk-or-your-key-here
+```
+
+Optional: override the model without changing code:
+
+```bash
+supabase secrets set OPENROUTER_MODEL=google/gemma-4-31b-it:free
+```
+
+Free OpenRouter models are rate-limited. This is fine for a low-volume class
+demo, but exact artwork identification may be imperfect. When the model cannot
+identify the exact artwork, the function should still return a useful visual
+description and low confidence.
+
+## 4. Deploy The Edge Function
+
+Install the Supabase CLI if needed:
+
+- Mac: `brew install supabase/tap/supabase`
+- Other platforms: see Supabase CLI docs
+
+From the repo or `museum_fullstack/` folder:
+
+```bash
 supabase login
-
-# 2. Link this folder to your project (replace with your project ref from the URL)
-supabase link --project-ref YOUR-PROJECT-REF
-
-# 3. Store the Claude key as a secret (server-side only)
-supabase secrets set ANTHROPIC_API_KEY=sk-ant-your-key-here
-
-# 4. Deploy
+supabase link --project-ref djydtidnjokygfrlvglw
+supabase secrets set OPENROUTER_API_KEY=sk-or-your-key-here
 supabase functions deploy recognize-artwork
 ```
 
-Supabase automatically injects `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-into every function, so you don't need to set those.
+Supabase automatically provides `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` to Edge Functions.
 
----
+## 5. Local Development
 
-## 7. Try it
-
-You can open the HTML files directly with `file://`, but auth + storage work
-more predictably over http. The easiest way:
+From the repo root:
 
 ```bash
-# From the museum_frontend/ folder:
-python3 -m http.server 5173
+npm install
+npm run dev
 ```
 
-Then open http://localhost:5173/homepage-2.html.
-
 Flow:
-- `homepage-2.html` -> **Login** -> `login-page.html`
-- Click **Create Account** with any email + a 6+ char password -> you land on
-  `homepage-1.html`.
-- Click **+ Add Artwork**, upload a photo of a painting. The page uploads to
-  storage, inserts a row, calls `recognize-artwork`, and redirects to the
-  detail page where Claude's title/artist/description/themes are rendered.
-- `collection-all.html` shows every artwork you've added, filterable by theme.
 
----
+- `homepage-2.html` -> login
+- `login-page.html` -> sign in or create account
+- `homepage-1.html` -> collection hub
+- `+ Add Artwork` -> uploads an image and calls `recognize-artwork`
+- `3D Museum` -> routes to `/`, the React multiplayer museum app
+
+For local multiplayer backend testing, run:
+
+```bash
+npm run dev:all
+```
 
 ## Troubleshooting
 
-**"config.js is not filled in"** in the browser console — you skipped step 3.
+**Bucket not found**
+Run `museum_fullstack/supabase/schema.sql`. It creates the private `artworks`
+bucket and storage policies.
 
-**Login button just spins** — check the browser console. Usually the URL or
-anon key is wrong, or the Supabase project isn't fully provisioned yet.
+**Could not find table `public.artworks`**
+Run `museum_fullstack/supabase/schema.sql`. The collection/upload pages require
+the `artworks` table.
 
-**Upload works but "anthropic failed" appears** — run
-`supabase functions logs recognize-artwork --tail` and look for the error.
-Usually: missing `ANTHROPIC_API_KEY` secret, no billing credit, or the image
-is too large (try a smaller photo).
+**Upload works but recognition fails**
+Check Supabase Edge Function logs:
 
-**Nothing appears on the collection page** — check the Supabase dashboard ->
-Table Editor -> `artworks`. If rows are there but not visible, RLS may not
-have been applied; re-run `schema.sql`.
+```bash
+supabase functions logs recognize-artwork --tail
+```
 
-**"row violates row-level security"** on insert — your browser session's user
-id doesn't match `user_id`. Sign out and back in.
+Common causes:
 
----
+- missing `OPENROUTER_API_KEY`
+- OpenRouter free-tier rate limit
+- uploaded image too large
+- model returned non-JSON output
 
-## What maps to what
+**3D session creation fails**
+Make sure the same schema was run. The React app expects `museum_sessions` and
+`user_museums`.
 
-| Feature              | Where it lives                                                 |
-| -------------------- | -------------------------------------------------------------- |
-| Auth                 | `login-page.html` + `supabase-client.js` (`signIn` / `signUp`) |
-| Session guard        | `museum.requireAuth()` at the top of each protected page       |
-| Photo upload         | `add-images.html` -> `museum.uploadArtworkFile()`              |
-| AI recognition       | `supabase/functions/recognize-artwork/index.ts`                |
-| Artwork detail view  | `artwork-detail.html?id=<uuid>`                                |
-| Collection grid      | `collection-all.html` (queries your own rows via RLS)          |
-| User caption         | `artwork-detail.html` (textarea -> `update artworks`)          |
+## What Maps To What
 
-The old hardcoded `artwork-detail-1.html` and `artwork-detail-2.html` files
-are untouched — they're still useful as static design references, but the
-live flow uses `artwork-detail.html`.
+| Feature | Location |
+| --- | --- |
+| Public museum home | `museum_fullstack/homepage-2.html` |
+| Authenticated museum home | `museum_fullstack/homepage-1.html` |
+| Static-page auth helpers | `museum_fullstack/supabase-client.js` |
+| Static-page Supabase config | `museum_fullstack/config.js` |
+| Photo upload | `museum_fullstack/add-images.html` |
+| AI recognition | `museum_fullstack/supabase/functions/recognize-artwork/index.ts` |
+| Collection grid | `museum_fullstack/collection-all.html` |
+| Artwork detail | `museum_fullstack/artwork-detail.html?id=<uuid>` |
+| 3D multiplayer app | repo root React/Vite app |

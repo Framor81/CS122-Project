@@ -14,6 +14,11 @@ export const hasSupabaseConfig =
   supabaseAnonKey.length > 0
 
 export const supabase = hasSupabaseConfig
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        storageKey: 'museum-auth',
+      },
+    })
   : null
-

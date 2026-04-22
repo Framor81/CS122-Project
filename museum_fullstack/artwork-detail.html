@@ -15,7 +15,7 @@
       <div class="nav-links">
         <a href="homepage-1.html">HOME</a>
         <a href="collection-all.html" class="is-active">YOUR COLLECTION</a>
-        <a href="3d-museum.html">3D MUSEUM</a>
+        <a href="/">3D MUSEUM</a>
       </div>
       <div class="nav-actions">
         <span class="user-chip" id="user-chip"></span>
@@ -166,7 +166,7 @@
       if (!art) return;
 
       if (art.status === "pending") {
-        say("Claude is still analyzing this image…");
+        say("AI is still analyzing this image…");
         for (let i = 0; i < 30; i++) {
           await new Promise((r) => setTimeout(r, 1500));
           art = await load();
@@ -176,11 +176,11 @@
 
       if (!art) return;
       if (art.status === "error") {
-        say("AI analysis failed: " + (art.error_message || "unknown error"), "error");
-        return;
+        await render(art);
+        say("Saved, but AI analysis failed: " + (art.error_message || "unknown error"), "error");
+      } else {
+        await render(art);
       }
-
-      await render(art);
 
       // Save the user's caption
       const captionEl = document.getElementById("art-caption");

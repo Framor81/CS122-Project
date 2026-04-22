@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // recognize-artwork Edge Function
 // Deploy:  supabase functions deploy recognize-artwork --no-verify-jwt=false
-// Secrets: supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+// Secrets: supabase secrets set OPENROUTER_API_KEY=sk-or-...
 //
 // Flow:
 //   1. Frontend uploads a photo to the 'artworks' storage bucket
@@ -10,15 +10,17 @@
 //   3. This function:
 //        - Verifies the caller owns the row (RLS also enforces this).
 //        - Downloads the image from storage as base64.
-//        - Sends it to Claude with a structured prompt.
+//        - Sends it to OpenRouter/Gemma with a structured prompt.
 //        - Parses JSON and updates the row (status='ready').
 // ---------------------------------------------------------------------------
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const OPENROUTER_MODEL =
+  Deno.env.get("OPENROUTER_MODEL") || "google/gemma-4-31b-it:free";
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -36,21 +38,21 @@ function json(body: unknown, status = 200) {
 
 const PROMPT = `You are an expert art historian analyzing a photograph of an artwork
 taken inside a museum. Identify the artwork if you can, and describe it in a way
-that gives the viewer rich context — the artist, the period, the themes, and a
-short narrative description that goes beyond a wikipedia summary.
+that gives the viewer rich context: the artist, period, themes, and a short
+narrative description.
 
 Respond with ONLY a JSON object (no prose, no markdown fences) matching this shape:
 
 {
   "title": string | null,
   "artist": string | null,
-  "period": string | null,          // e.g. "Post-Impressionism"
-  "date_text": string | null,       // e.g. "1889" or "c. 1665"
-  "medium": string | null,          // e.g. "Oil on canvas"
-  "dimensions": string | null,      // e.g. "73.7 x 92.1 cm"
-  "location_guess": string | null,  // museum / gallery if confident
-  "description": string,            // 3-5 sentences of rich context
-  "themes": string[],               // 3-6 short tags in ALL CAPS
+  "period": string | null,
+  "date_text": string | null,
+  "medium": string | null,
+  "dimensions": string | null,
+  "location_guess": string | null,
+  "description": string,
+  "themes": string[],
   "confidence": "high" | "medium" | "low"
 }
 
@@ -62,11 +64,6 @@ interface RecognizePayload {
   artwork_id: string;
 }
 
-interface AnthropicContentBlock {
-  type: string;
-  text?: string;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
@@ -76,7 +73,6 @@ Deno.serve(async (req) => {
     return json({ error: "method not allowed" }, 405);
   }
 
-  // Auth: the JWT from the caller is forwarded by supabase.functions.invoke
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader.startsWith("Bearer ")) {
     return json({ error: "missing bearer token" }, 401);
@@ -92,25 +88,21 @@ Deno.serve(async (req) => {
     return json({ error: "artwork_id required" }, 400);
   }
 
-  // Client scoped to THIS user — RLS will block access to other users' rows.
   const userClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
   });
 
-  // Admin client with service role — used to update the row and download the file
   const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   });
 
-  // Look up the user to verify they exist
   const { data: userData, error: userErr } = await userClient.auth.getUser();
   if (userErr || !userData.user) {
     return json({ error: "not authenticated" }, 401);
   }
   const userId = userData.user.id;
 
-  // Fetch the artwork row, owned by this user only
   const { data: artwork, error: artErr } = await userClient
     .from("artworks")
     .select("id, user_id, image_path, status")
@@ -124,7 +116,6 @@ Deno.serve(async (req) => {
     return json({ error: "forbidden" }, 403);
   }
 
-  // Download the image from storage as bytes
   const { data: blob, error: dlErr } = await adminClient.storage
     .from("artworks")
     .download(artwork.image_path);
@@ -140,24 +131,27 @@ Deno.serve(async (req) => {
   const base64 = base64FromBytes(bytes);
   const mediaType = blob.type || guessMediaType(artwork.image_path);
 
-  // Call Claude
-  const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+  const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
+      "authorization": `Bearer ${OPENROUTER_API_KEY}`,
+      "http-referer": "https://cs122-project.vercel.app",
+      "x-title": "Personal Museum",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-6",
+      model: OPENROUTER_MODEL,
       max_tokens: 1024,
+      temperature: 0.2,
       messages: [
         {
           role: "user",
           content: [
             {
-              type: "image",
-              source: { type: "base64", media_type: mediaType, data: base64 },
+              type: "image_url",
+              image_url: {
+                url: `data:${mediaType};base64,${base64}`,
+              },
             },
             { type: "text", text: PROMPT },
           ],
@@ -170,17 +164,13 @@ Deno.serve(async (req) => {
     const txt = await aiRes.text();
     await adminClient
       .from("artworks")
-      .update({ status: "error", error_message: `anthropic ${aiRes.status}` })
+      .update({ status: "error", error_message: `openrouter ${aiRes.status}` })
       .eq("id", artwork.id);
-    return json({ error: "anthropic failed", status: aiRes.status, detail: txt }, 502);
+    return json({ error: "openrouter failed", status: aiRes.status, detail: txt }, 502);
   }
 
   const aiJson = await aiRes.json();
-  const text = (aiJson.content as AnthropicContentBlock[])
-    .filter((b) => b.type === "text" && b.text)
-    .map((b) => b.text)
-    .join("")
-    .trim();
+  const text = String(aiJson?.choices?.[0]?.message?.content ?? "").trim();
 
   let parsed: Record<string, unknown>;
   try {
@@ -224,8 +214,6 @@ Deno.serve(async (req) => {
 
   return json({ ok: true, artwork_id: artwork.id, ...update });
 });
-
-// --- helpers ---------------------------------------------------------------
 
 function stringOrNull(v: unknown): string | null {
   if (typeof v === "string" && v.trim().length > 0) return v;

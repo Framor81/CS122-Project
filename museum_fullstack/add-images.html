@@ -15,7 +15,7 @@
       <div class="nav-links">
         <a href="homepage-1.html">HOME</a>
         <a href="collection-all.html">COLLECTION</a>
-        <a href="3d-museum.html">3D MUSEUM</a>
+        <a href="/">3D MUSEUM</a>
       </div>
       <div class="nav-actions">
         <span class="user-chip" id="user-chip"></span>
@@ -78,11 +78,23 @@
             .single();
           if (insertErr) throw insertErr;
 
-          say("Identifying artwork with Claude…");
+          say("Identifying artwork…");
 
           // 3. Fire the edge function. It updates the row in place.
-          const result = await museum.recognizeArtwork(art.id);
-          console.log("recognize result:", result);
+          try {
+            const result = await museum.recognizeArtwork(art.id);
+            console.log("recognize result:", result);
+          } catch (recognizeErr) {
+            console.warn("recognition failed", recognizeErr);
+            await museum.client
+              .from("artworks")
+              .update({
+                status: "error",
+                error_message:
+                  recognizeErr.message || "AI recognition is not configured yet.",
+              })
+              .eq("id", art.id);
+          }
 
           // 4. Hop to the detail page
           window.location.href = `artwork-detail.html?id=${art.id}`;

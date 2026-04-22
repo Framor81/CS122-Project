@@ -4,6 +4,6 @@
 // service_role key here.
 // ---------------------------------------------------------------------------
 window.MUSEUM_CONFIG = {
-  SUPABASE_URL: "https://YOUR-PROJECT-REF.supabase.co",
-  SUPABASE_ANON_KEY: "YOUR-ANON-PUBLIC-KEY",
+  SUPABASE_URL: "https://djydtidnjokygfrlvglw.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_Bch-DTKjvXmxukkIgOpZ7Q_Gf4gKIYR",
 };
