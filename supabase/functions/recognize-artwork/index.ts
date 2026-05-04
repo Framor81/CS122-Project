@@ -179,9 +179,9 @@ Deno.serve(async (req) => {
   const aiJson = await aiRes.json();
   const text = String(aiJson?.choices?.[0]?.message?.content ?? "").trim();
 
-  let parsed: Record<string, unknown>;
+  let parsedRoot: unknown;
   try {
-    parsed = JSON.parse(stripFences(text));
+    parsedRoot = JSON.parse(stripFences(text));
   } catch (e) {
     await adminClient
       .from("artworks")
@@ -194,38 +194,85 @@ Deno.serve(async (req) => {
     return json({ error: "bad AI response", detail: String(e), raw: text }, 502);
   }
 
-  const themes = normalizeArtworkThemes(parsed.themes);
-  const rawAiStored = {
-    ...parsed,
-    themes,
-    themes_from_model: parsed.themes,
-  };
-
-  const update = {
-    status: "ready",
-    title: stringOrNull(parsed.title),
-    artist: stringOrNull(parsed.artist),
-    period: stringOrNull(parsed.period),
-    date_text: stringOrNull(parsed.date_text),
-    medium: stringOrNull(parsed.medium),
-    dimensions: stringOrNull(parsed.dimensions),
-    location_guess: stringOrNull(parsed.location_guess),
-    description: stringOrNull(parsed.description) ?? "",
-    themes,
-    raw_ai: rawAiStored as Record<string, unknown>,
-    error_message: null,
-  };
-
-  const { error: upErr } = await adminClient
-    .from("artworks")
-    .update(update)
-    .eq("id", artwork.id);
-  if (upErr) {
-    return json({ error: "db update failed", detail: upErr.message }, 500);
+  if (!isJsonObject(parsedRoot)) {
+    await adminClient
+      .from("artworks")
+      .update({
+        status: "error",
+        error_message: "model returned a non-object JSON root",
+        raw_ai: { raw_text: text } as Record<string, unknown>,
+      })
+      .eq("id", artwork.id);
+    return json(
+      { error: "bad AI response", detail: "expected a JSON object at the root" },
+      502,
+    );
   }
 
-  return json({ ok: true, artwork_id: artwork.id, ...update });
+  const parsed = parsedRoot;
+
+  try {
+    const themes = normalizeArtworkThemes(parsed.themes);
+    const rawAiStored = jsonSafeObject({
+      ...parsed,
+      themes,
+      themes_from_model: parsed.themes,
+    });
+
+    const update = {
+      status: "ready" as const,
+      title: stringOrNull(parsed.title),
+      artist: stringOrNull(parsed.artist),
+      period: stringOrNull(parsed.period),
+      date_text: stringOrNull(parsed.date_text),
+      medium: stringOrNull(parsed.medium),
+      dimensions: stringOrNull(parsed.dimensions),
+      location_guess: stringOrNull(parsed.location_guess),
+      description: stringOrNull(parsed.description) ?? "",
+      themes,
+      raw_ai: rawAiStored,
+      error_message: null,
+    };
+
+    const { error: upErr } = await adminClient
+      .from("artworks")
+      .update(update)
+      .eq("id", artwork.id);
+    if (upErr) {
+      return json({ error: "db update failed", detail: upErr.message }, 500);
+    }
+
+    return json({ ok: true, artwork_id: artwork.id, ...update });
+  } catch (err) {
+    console.error("recognize-artwork handler error:", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    try {
+      await adminClient
+        .from("artworks")
+        .update({
+          status: "error",
+          error_message: `recognition failed: ${msg.slice(0, 500)}`,
+        })
+        .eq("id", artwork.id);
+    } catch {
+      // ignore
+    }
+    return json({ error: "internal error", detail: msg }, 500);
+  }
 });
+
+function isJsonObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+/** Ensures value is JSON-serializable for the jsonb column (no BigInt / circular refs). */
+function jsonSafeObject(v: Record<string, unknown>): Record<string, unknown> {
+  try {
+    return JSON.parse(JSON.stringify(v)) as Record<string, unknown>;
+  } catch {
+    return { _note: "raw_ai could not be serialized" };
+  }
+}
 
 function stringOrNull(v: unknown): string | null {
   if (typeof v === "string" && v.trim().length > 0) return v;

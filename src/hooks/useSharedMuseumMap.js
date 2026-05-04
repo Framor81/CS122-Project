@@ -51,7 +51,10 @@ export function useSharedMuseumMap(userId, sessionCode) {
 
   useEffect(() => {
     let mounted = true
-    if (!supabase || !userId || !sessionCode) return
+    if (!supabase || !userId || !sessionCode) {
+      setLoading(false)
+      return
+    }
 
     const load = async () => {
       const { data } = await supabase

@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react'
 import { useMultiplayer } from '../hooks/useMultiplayer.js'
-import { useSessionArtworks } from '../hooks/useSessionArtworks.js'
-import { useSharedMuseumMap } from '../hooks/useSharedMuseumMap.js'
 import { estimateMuseumArtworkCapacity } from '../world/galleryCapacity.js'
 import { SessionChat } from '../components/SessionChat.jsx'
 import { Museum3DShell } from '../components/Museum3DShell.jsx'
@@ -10,6 +8,9 @@ export function SessionLobby({
   displayName,
   userId,
   sessionCode,
+  sessionArtworks,
+  museumMap,
+  museumMapLoading,
   chat,
   onEnterMuseum,
   onNavigate,
@@ -20,19 +21,16 @@ export function SessionLobby({
   const [copied, setCopied] = useState(false)
   const [scopeSaving, setScopeSaving] = useState(false)
 
-  const sessionArtworks = useSessionArtworks({ sessionCode, userId })
-  const sharedMap = useSharedMuseumMap(userId, sessionCode)
-
   const capacity = useMemo(() => {
-    const m = sharedMap.museumMap
+    const m = museumMap
     if (!m?.seedText) return 0
     return estimateMuseumArtworkCapacity(m.seedText, m.gridSize)
-  }, [sharedMap.museumMap])
+  }, [museumMap])
 
   const poolCount = sessionArtworks.artworks?.length ?? 0
   const placedCount = capacity > 0 ? Math.min(poolCount, capacity) : 0
   const overflow = poolCount > capacity && capacity > 0
-  const galleryLoading = sessionArtworks.loading || sharedMap.loading
+  const galleryLoading = sessionArtworks.loading || museumMapLoading
 
   const playerNames = useMemo(() => {
     const names = [displayName, ...Object.values(multiplayer.remotePlayers).map((p) => p?.name || 'Visitor')]

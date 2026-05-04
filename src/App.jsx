@@ -55,11 +55,11 @@ function MuseumSession({
   onRegenerateMap,
   onExitMuseum,
   onHostSessionClosed,
+  sessionArtworks,
 }) {
   const [chatOpen, setChatOpen] = useState(false)
   const inputRef = useGameInput({ disabled: chatOpen })
   const multiplayer = useMultiplayer(displayName, sessionCode)
-  const sessionArtworks = useSessionArtworks({ sessionCode, userId })
   const artworkUrls = useMemo(
     () =>
       (sessionArtworks.artworks || [])
@@ -335,6 +335,10 @@ function App() {
   const [sessionCode, setSessionCode] = useState(() => readSessionCodeFromUrl())
   const [hasEnteredMuseum, setHasEnteredMuseum] = useState(false)
   const sharedMuseum = useSharedMuseumMap(auth.user?.id, sessionCode)
+  const sessionArtworks = useSessionArtworks({
+    sessionCode: sessionCode ?? '',
+    userId: auth.user?.id ?? '',
+  })
 
   const handleEnterMuseum = useCallback(() => {
     setHasEnteredMuseum(true)
@@ -504,6 +508,9 @@ function App() {
         displayName={effectiveDisplayName}
         userId={auth.user.id}
         sessionCode={sessionCode}
+        sessionArtworks={sessionArtworks}
+        museumMap={sharedMuseum.museumMap}
+        museumMapLoading={sharedMuseum.loading}
         chat={sessionChat}
         onEnterMuseum={handleEnterMuseum}
         onNavigate={handleNavbarNavigate}
@@ -518,6 +525,7 @@ function App() {
       displayName={effectiveDisplayName}
       userId={auth.user.id}
       sessionCode={sessionCode}
+      sessionArtworks={sessionArtworks}
       chat={sessionChat}
       museumMap={sharedMuseum.museumMap}
       onRegenerateMap={sharedMuseum.regenerateMap}
