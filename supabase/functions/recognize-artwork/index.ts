@@ -16,6 +16,11 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+import {
+  normalizeArtworkThemes,
+  THEMES_PROMPT_SECTION,
+} from "./artworkThemes.js";
+
 const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -41,6 +46,8 @@ taken inside a museum. Identify the artwork if you can, and describe it in a way
 that gives the viewer rich context: the artist, period, themes, and a short
 narrative description.
 
+${THEMES_PROMPT_SECTION}
+
 Respond with ONLY a JSON object (no prose, no markdown fences) matching this shape:
 
 {
@@ -57,8 +64,8 @@ Respond with ONLY a JSON object (no prose, no markdown fences) matching this sha
 }
 
 If you cannot identify the artwork, still return the JSON but set title/artist/etc.
-to null and describe what you see and the themes you observe. Never return prose
-outside the JSON.`;
+to null and describe what you see and apply themes from the allowed list only.
+Never return prose outside the JSON.`;
 
 interface RecognizePayload {
   artwork_id: string;
@@ -187,6 +194,13 @@ Deno.serve(async (req) => {
     return json({ error: "bad AI response", detail: String(e), raw: text }, 502);
   }
 
+  const themes = normalizeArtworkThemes(parsed.themes);
+  const rawAiStored = {
+    ...parsed,
+    themes,
+    themes_from_model: parsed.themes,
+  };
+
   const update = {
     status: "ready",
     title: stringOrNull(parsed.title),
@@ -197,10 +211,8 @@ Deno.serve(async (req) => {
     dimensions: stringOrNull(parsed.dimensions),
     location_guess: stringOrNull(parsed.location_guess),
     description: stringOrNull(parsed.description) ?? "",
-    themes: Array.isArray(parsed.themes)
-      ? (parsed.themes as unknown[]).filter((t) => typeof t === "string")
-      : [],
-    raw_ai: parsed,
+    themes,
+    raw_ai: rawAiStored as Record<string, unknown>,
     error_message: null,
   };
 

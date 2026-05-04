@@ -51,6 +51,12 @@ create policy "users read own artworks"
   on public.artworks for select
   using (auth.uid() = user_id);
 
+drop policy if exists "authenticated users read all artworks" on public.artworks;
+create policy "authenticated users read all artworks"
+  on public.artworks for select
+  to authenticated
+  using (true);
+
 create policy "users insert own artworks"
   on public.artworks for insert
   with check (auth.uid() = user_id);
@@ -79,6 +85,12 @@ create policy "users read own art images"
     and auth.uid()::text = (storage.foldername(name))[1]
   );
 
+drop policy if exists "authenticated users read all art images" on storage.objects;
+create policy "authenticated users read all art images"
+  on storage.objects for select
+  to authenticated
+  using (bucket_id = 'artworks');
+
 create policy "users upload own art images"
   on storage.objects for insert
   with check (
@@ -97,6 +109,7 @@ create table if not exists public.museum_sessions (
   session_code text primary key,
   seed_text text not null default 'museum-seed-alpha',
   grid_size integer not null default 800 check (grid_size between 500 and 2500),
+  artwork_scope text not null default 'host' check (artwork_scope in ('host', 'all')),
   host_user_id uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -106,9 +119,14 @@ alter table public.museum_sessions
   add column if not exists session_code text,
   add column if not exists seed_text text not null default 'museum-seed-alpha',
   add column if not exists grid_size integer not null default 800,
+  add column if not exists artwork_scope text not null default 'host',
   add column if not exists host_user_id uuid,
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists updated_at timestamptz not null default now();
+
+update public.museum_sessions
+set artwork_scope = 'host'
+where artwork_scope is null;
 
 delete from public.museum_sessions where session_code is null;
 alter table public.museum_sessions alter column session_code set not null;

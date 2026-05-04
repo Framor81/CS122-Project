@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTexture } from '@react-three/drei'
-import { loadImage } from '../world/FramesLayer.jsx'
+import { loadImage } from '../world/loadArtworkImage.js'
 import { debugReport } from '../lib/debugBus.js'
 
 /**
@@ -60,7 +60,7 @@ export function useArtworksReady(urls, { enabled = true } = {}) {
       // drei preload is best-effort.
     }
 
-    const settle = (kind, url) => {
+    const settle = (kind) => {
       if (cancelled) return
       if (kind === 'loaded') loaded += 1
       else errored += 1

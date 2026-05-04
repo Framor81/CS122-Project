@@ -21,8 +21,8 @@ const FRAME_DEPTH = 0.06
 const PICTURE_INSET = 0.08
 const PICTURE_DEPTH = 0.012
 
-const PLAQUE_WIDTH = 0.36
-const PLAQUE_HEIGHT = 0.22
+const PLAQUE_WIDTH = 0.56
+const PLAQUE_HEIGHT = 0.48
 const PLAQUE_DEPTH = 0.025
 const PLAQUE_GAP = 0.18 // horizontal gap between frame edge and plaque
 
@@ -175,16 +175,20 @@ function makeId(run, idx, suffix = '') {
   return `frame-${a}-${run.perp.toFixed(2)}-${n > 0 ? 'p' : 'n'}-${run.start.toFixed(2)}-${idx}${tail}`
 }
 
-function buildPlaqueText(art) {
-  if (!art) return ''
-  const title = (art.title || '').trim() || (art.status === 'pending' ? 'Identifying…' : 'Untitled')
-  const lines = [title]
-  if (art.artist) lines.push(`by ${art.artist}`)
-  const meta = []
-  if (art.date_text) meta.push(art.date_text)
-  if (art.medium) meta.push(art.medium)
-  if (meta.length) lines.push(meta.join(' · '))
-  if (art.dimensions) lines.push(art.dimensions)
+function getPlaqueCopy(art) {
+  if (!art) {
+    return { title: 'Untitled', artist: '', description: '' }
+  }
+  const title =
+    (art.title || '').trim() || (art.status === 'pending' ? 'Identifying…' : 'Untitled')
+  const artist = (art.artist || '').trim()
+  const description = (art.description || '').trim()
+  return { title, artist, description }
+}
+
+function plaqueTextFromCopy(copy) {
+  const lines = [copy.title, copy.artist || 'Artist unknown']
+  if (copy.description) lines.push(copy.description)
   return lines.join('\n')
 }
 
@@ -293,6 +297,8 @@ function placeOnRun(run, art, opts) {
     plaqueX = frameX
   }
 
+  const copy = getPlaqueCopy(art)
+
   return {
     id: makeId(run, 0, art?.id || 'empty'),
     artwork: art || null,
@@ -314,7 +320,10 @@ function placeOnRun(run, art, opts) {
       width: variant.plaqueWidth,
       height: variant.plaqueHeight,
       depth: variant.plaqueDepth,
-      text: buildPlaqueText(art) || `Untitled`,
+      text: plaqueTextFromCopy(copy) || `Untitled`,
+      title: copy.title,
+      artist: copy.artist,
+      description: copy.description,
     },
     run: {
       axis: run.axis,
@@ -451,6 +460,25 @@ function packEmptyRun(run, opts) {
  *        first, until the collection is exhausted. If empty/undefined, falls
  *        back to procedural empty-frame packing.
  */
+/**
+ * How many artworks can fit on this museum mesh (one per wall run), using a
+ * nominal aspect ratio. Mirrors placement rules in generateFramePlacements.
+ */
+export function estimatePlaceableArtworkCount(walls, options = {}) {
+  if (!Array.isArray(walls) || walls.length === 0) return 0
+
+  const runs = buildRuns(walls)
+  runs.sort((a, b) => b.end - b.start - (a.end - a.start))
+
+  const placeholderArt = { id: '__capacity__', aspect: 1 }
+  let count = 0
+  for (const run of runs) {
+    const placement = placeOnRun(run, placeholderArt, options)
+    if (placement) count += 1
+  }
+  return count
+}
+
 export function generateFramePlacements(walls, options = {}) {
   if (!Array.isArray(walls) || walls.length === 0) return []
 

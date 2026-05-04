@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import './MuseumGate.css'
-import { PageWhimsy } from './PageWhimsy.jsx'
+import { Museum3DShell } from '../components/Museum3DShell.jsx'
 import { supabase } from '../lib/supabaseClient.js'
 
 function makeSessionCode() {
@@ -14,7 +13,14 @@ function makeSessionCode() {
 
 const DEFAULT_MAP = { seedText: 'museum-seed-alpha', gridSize: 800 }
 
-export function SessionGate({ onSelectSession, userId }) {
+export function SessionGate({
+  onSelectSession,
+  userId,
+  displayName,
+  onNavigate,
+  onNavigate3D,
+  onSignOut,
+}) {
   const [mode, setMode] = useState(null)
   const [joinCode, setJoinCode] = useState('')
   const [errorText, setErrorText] = useState('')
@@ -61,117 +67,93 @@ export function SessionGate({ onSelectSession, userId }) {
     }
   }, [mode, onSelectSession, userId])
 
+  const tryJoin = async () => {
+    if (!normalizedJoin || isSubmitting) return
+    if (!supabase) {
+      setErrorText('Session lookup is unavailable right now.')
+      return
+    }
+    setIsSubmitting(true)
+    setErrorText('')
+    const { data } = await supabase
+      .from('museum_sessions')
+      .select('session_code')
+      .eq('session_code', normalizedJoin)
+      .maybeSingle()
+    setIsSubmitting(false)
+    if (!data?.session_code) {
+      setErrorText('Session not found')
+      return
+    }
+    onSelectSession(normalizedJoin)
+  }
+
+  let main = null
   if (!mode) {
-    return (
-      <div className="museum-gate">
-        <PageWhimsy />
-        <div className="museum-gate__panel">
-          <h1 className="museum-gate__title">Session Lobby</h1>
-          <p className="museum-gate__hint">Create a session code or join an existing one.</p>
-          <button className="museum-gate__button" onClick={() => setMode('create')} type="button">
-            Generate Session Code
+    main = (
+      <main className="m3d-hero">
+        <p className="m3d-eyebrow">Immersive experience</p>
+        <h1 className="m3d-hero-title">3D Museum</h1>
+        <div className="m3d-rule" aria-hidden />
+        <p className="m3d-tagline">
+          Step inside your collection. Walk through space, not just images.
+        </p>
+        <div className="m3d-cta-row">
+          <button type="button" className="m3d-cta-link" onClick={() => setMode('create')}>
+            Enter museum →
           </button>
-          <button
-            className="museum-gate__button"
-            style={{ marginTop: 10 }}
-            onClick={() => setMode('join')}
-            type="button"
-          >
-            Join Session
+          <span className="m3d-cta-divider" aria-hidden />
+          <button type="button" className="m3d-cta-link" onClick={() => setMode('join')}>
+            Join session →
           </button>
         </div>
+      </main>
+    )
+  } else if (mode === 'create') {
+    main = (
+      <div className="m3d-card">
+        <h2 className="m3d-card__title">Creating session</h2>
+        <p className="m3d-card__hint">
+          {isSubmitting ? 'Generating your session code…' : errorText || 'Please wait…'}
+        </p>
+        {!isSubmitting && errorText ? (
+          <button type="button" className="m3d-card__btn m3d-card__btn--secondary" onClick={() => setMode(null)}>
+            Back
+          </button>
+        ) : null}
       </div>
     )
-  }
-
-  if (mode === 'create') {
-    return (
-      <div className="museum-gate">
-        <PageWhimsy />
-        <div className="museum-gate__panel">
-          <h1 className="museum-gate__title">Creating Session</h1>
-          <p className="museum-gate__hint">
-            {isSubmitting ? 'Generating your session code...' : errorText || 'Please wait...'}
-          </p>
-          {!isSubmitting && errorText ? (
-            <button className="museum-gate__button" type="button" onClick={() => setMode(null)}>
-              Back
-            </button>
-          ) : null}
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="museum-gate">
-      <PageWhimsy />
-      <div className="museum-gate__panel">
-        <h1 className="museum-gate__title">Join Session</h1>
-        <label className="museum-gate__label">Session code</label>
+  } else {
+    main = (
+      <div className="m3d-card">
+        <h2 className="m3d-card__title">Join session</h2>
+        <p className="m3d-card__hint">Enter the code you received from the host.</p>
+        <label className="m3d-card__label" htmlFor="m3d-join-code">
+          Session code
+        </label>
         <input
-          className="museum-gate__input"
+          id="m3d-join-code"
+          className="m3d-card__input"
           value={joinCode}
           onChange={(e) => {
             setJoinCode(e.target.value)
             setErrorText('')
           }}
           placeholder="ABC123"
+          autoComplete="off"
           onKeyDown={async (e) => {
             if (e.key !== 'Enter' || !normalizedJoin || isSubmitting) return
-            if (!supabase) {
-              setErrorText('Session lookup is unavailable right now.')
-              return
-            }
-            setIsSubmitting(true)
-            const { data } = await supabase
-              .from('museum_sessions')
-              .select('session_code')
-              .eq('session_code', normalizedJoin)
-              .maybeSingle()
-            setIsSubmitting(false)
-            if (!data?.session_code) {
-              setErrorText('Session not found')
-              return
-            }
-            onSelectSession(normalizedJoin)
+            e.preventDefault()
+            await tryJoin()
           }}
         />
-        {errorText ? (
-          <p className="museum-gate__hint" style={{ color: '#ffd0c7' }}>
-            {errorText}
-          </p>
-        ) : null}
-        <button
-          className="museum-gate__button"
-          type="button"
-          disabled={!normalizedJoin || isSubmitting}
-          onClick={async () => {
-            if (!supabase) {
-              setErrorText('Session lookup is unavailable right now.')
-              return
-            }
-            setIsSubmitting(true)
-            setErrorText('')
-            const { data } = await supabase
-              .from('museum_sessions')
-              .select('session_code')
-              .eq('session_code', normalizedJoin)
-              .maybeSingle()
-            setIsSubmitting(false)
-            if (!data?.session_code) {
-              setErrorText('Session not found')
-              return
-            }
-            onSelectSession(normalizedJoin)
-          }}
-        >
-          {isSubmitting ? 'Checking...' : 'Enter Session Lobby'}
+        {errorText ? <p className="m3d-card__error">{errorText}</p> : null}
+        <button type="button" className="m3d-card__btn" disabled={!normalizedJoin || isSubmitting} onClick={tryJoin}>
+          {isSubmitting ? 'Checking…' : 'Enter session lobby →'}
         </button>
         <button
-          className="museum-gate__button"
-          style={{ marginTop: 10 }}
           type="button"
+          className="m3d-card__btn m3d-card__btn--secondary"
           onClick={() => {
             setJoinCode('')
             setErrorText('')
@@ -182,7 +164,19 @@ export function SessionGate({ onSelectSession, userId }) {
           Back
         </button>
       </div>
-    </div>
+    )
+  }
+
+  return (
+    <Museum3DShell
+      variant="hero"
+      displayName={displayName}
+      activeRoute=""
+      onNavigate={onNavigate}
+      onNavigate3D={onNavigate3D}
+      onSignOut={onSignOut}
+    >
+      {main}
+    </Museum3DShell>
   )
 }
-

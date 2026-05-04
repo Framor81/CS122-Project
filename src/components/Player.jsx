@@ -10,7 +10,7 @@ const PLAYER_SPEED = 6
 const JUMP_VELOCITY = 8.5
 
 export function Player({
-  displayName,
+  displayName = 'Visitor',
   inputRef,
   muzzleRef,
   combatEnabled,
@@ -45,6 +45,7 @@ export function Player({
   const particleLocalTmp = useRef(new THREE.Vector3())
   const dashLocalTmp = useRef(new THREE.Vector3())
   const dashDirLocalTmp = useRef(new THREE.Vector3())
+  const forwardXZTmp = useRef(new THREE.Vector3())
   const { camera } = useThree()
   const playerRadius = 0.4
   const playerHalfHeightStand = 0.9
@@ -275,7 +276,14 @@ export function Player({
       verticalVelocity.current = 0
     }
 
-    const cameraSeatOffset = effectiveHalfHeight === playerHalfHeightCrouch ? 0.42 : 0.62
+    // Museum: true first person — eye height (slightly raised for comfort).
+    const cameraSeatOffset = combatEnabled
+      ? effectiveHalfHeight === playerHalfHeightCrouch
+        ? 0.42
+        : 0.62
+      : effectiveHalfHeight === playerHalfHeightCrouch
+        ? 0.40
+        : 0.58
     const isDiving = diveActiveNext
     const shouldDiveRotate = isDiving && now >= diveTurnUntilRef.current
 
@@ -607,11 +615,16 @@ export function Player({
 
     cameraTarget.current.copy(player.position)
     cameraTarget.current.y += cameraSeatOffset
-    offsetVec.current.set(
-      Math.sin(input.yaw + Math.PI) * 2.7,
-      0.82,
-      Math.cos(input.yaw + Math.PI) * 2.7,
-    )
+    if (combatEnabled) {
+      offsetVec.current.set(
+        Math.sin(input.yaw + Math.PI) * 2.7,
+        0.82,
+        Math.cos(input.yaw + Math.PI) * 2.7,
+      )
+    } else {
+      // First person: no over-the-shoulder offset; only eye-height is applied above.
+      offsetVec.current.set(0, 0, 0)
+    }
 
     // Camera-wall pushback (stable): pick the maximum allowed distance fraction
     // along the offset ray that does NOT intersect walls, then ease the distance
@@ -621,7 +634,8 @@ export function Player({
 
     let allowedT = 1
     if (offsetLenXZ < 1e-6) {
-      allowedT = 0
+      // First person: keep camera at the eye anchor (no pull-back along a zero offset).
+      allowedT = 1
     } else {
       // Find the farthest t such that the ray is continuously unblocked
       // from the player (t=0) outwards. This prevents "popping" through a
@@ -660,6 +674,11 @@ export function Player({
     camera.position
       .copy(cameraTarget.current)
       .addScaledVector(offsetVec.current, nextT)
+
+    if (!combatEnabled) {
+      forwardXZTmp.current.set(Math.sin(input.yaw), 0, Math.cos(input.yaw)).normalize()
+      camera.position.addScaledVector(forwardXZTmp.current, 0.22)
+    }
 
     lookDir.current.set(
       Math.sin(input.yaw) * Math.cos(input.pitch),
@@ -705,15 +724,17 @@ export function Player({
             emissiveIntensity={0.09}
           />
         </mesh>
-        <Text
-          position={[0, 0.12, 0.41]}
-          color="#3f2b2b"
-          fontSize={0.14}
-          anchorX="center"
-          anchorY="middle"
-        >
-          :)
-        </Text>
+        {combatEnabled ? (
+          <Text
+            position={[0, 0.12, 0.41]}
+            color="#3f2b2b"
+            fontSize={0.14}
+            anchorX="center"
+            anchorY="middle"
+          >
+            :)
+          </Text>
+        ) : null}
       </group>
       {Array.from({ length: MAX_SPRINT_PARTICLES }).map((_, i) => (
         <mesh

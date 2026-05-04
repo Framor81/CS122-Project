@@ -9,6 +9,8 @@ import { SessionChat } from './components/SessionChat.jsx'
 import { AuthGate } from './screens/AuthGate.jsx'
 import { SessionGate } from './screens/SessionGate.jsx'
 import { SessionLobby } from './screens/SessionLobby.jsx'
+import { Museum3DLoading } from './components/Museum3DShell.jsx'
+import { PlaqueInspectOverlay } from './components/PlaqueInspectOverlay.jsx'
 import { UsernameSetupGate } from './screens/UsernameSetupGate.tsx'
 import { MuseumWebApp } from './screens/MuseumWebApp.tsx'
 import { useGameInput } from './hooks/useGameInput.js'
@@ -18,8 +20,7 @@ import { useCombatHudState } from './gamemode/useCombatHudState.js'
 import { useSupabaseAuth } from './hooks/useSupabaseAuth.js'
 import { useSessionChat } from './hooks/useSessionChat.js'
 import { useSharedMuseumMap } from './hooks/useSharedMuseumMap.js'
-import { capsuleColorFromName } from './hooks/useCapsuleColorFromName.js'
-import { useUserArtworks } from './hooks/useUserArtworks.js'
+import { useSessionArtworks } from './hooks/useSessionArtworks.js'
 import { useArtworksReady } from './hooks/useArtworksReady.js'
 
 function sanitizeSessionCode(value) {
@@ -47,39 +48,29 @@ function readSessionCodeFromUrl() {
 
 function MuseumSession({
   displayName,
+  userId,
   sessionCode,
   chat,
   museumMap,
   onRegenerateMap,
-  onReloadArtworks,
-  artworksReloadToken,
   onExitMuseum,
   onHostSessionClosed,
 }) {
   const [chatOpen, setChatOpen] = useState(false)
   const inputRef = useGameInput({ disabled: chatOpen })
   const multiplayer = useMultiplayer(displayName, sessionCode)
-  const userArtworks = useUserArtworks()
-  // Trigger artwork data reload (re-signed URLs etc.) when the parent bumps
-  // the reload token via the "Reload paintings" button.
-  useEffect(() => {
-    if (!artworksReloadToken || artworksReloadToken <= 0) return
-    userArtworks.reload?.()
-    // We intentionally don't depend on userArtworks.reload to avoid a loop;
-    // reload is stable enough across renders for this use.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [artworksReloadToken])
+  const sessionArtworks = useSessionArtworks({ sessionCode, userId })
   const artworkUrls = useMemo(
     () =>
-      (userArtworks.artworks || [])
+      (sessionArtworks.artworks || [])
         .map((a) => a?.imageUrl)
         .filter(Boolean),
-    [userArtworks.artworks],
+    [sessionArtworks.artworks],
   )
   const artworkReadiness = useArtworksReady(artworkUrls, {
-    enabled: !userArtworks.loading,
+    enabled: !sessionArtworks.loading,
   })
-  const museumReady = !userArtworks.loading && artworkReadiness.ready
+  const museumReady = !sessionArtworks.loading && artworkReadiness.ready
   const remoteCount = Object.keys(multiplayer.remotePlayers).length
   const combatEnabled = useCombatMode()
   const combatHud = useCombatHudState()
@@ -116,33 +107,39 @@ function MuseumSession({
 
   return (
     <>
+      <div className="pointer-events-none fixed inset-0 z-[55]">
+        <div className="absolute top-6 left-8 text-xs font-normal tracking-[0.35em] text-neutral-400">
+          MUSEUM
+          <div className="mt-1 text-[10px] tracking-[0.28em] text-neutral-500">
+            Session {sessionCode}
+          </div>
+        </div>
+        <div className="absolute top-6 right-8 text-right text-[11px] font-normal tracking-[0.16em] text-neutral-500">
+          <div>Press Enter to Chat</div>
+          <div className="mt-1 text-[10px] tracking-wide text-neutral-600">
+            Guest: {displayName}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onExitMuseum}
+          className="pointer-events-auto absolute bottom-8 left-8 cursor-pointer border-0 bg-transparent p-0 text-left text-xs font-normal tracking-[0.28em] text-neutral-400 hover:text-neutral-300"
+        >
+          ← Exit Museum
+        </button>
+      </div>
       <MultiplayerHud
         status={multiplayer.status}
         remoteCount={remoteCount}
       />
-      <div
-        style={{
-          position: 'fixed',
-          left: 16,
-          top: 56,
-          zIndex: 70,
-          padding: '7px 10px',
-          borderRadius: 8,
-          border: '1px solid rgba(255,255,255,0.25)',
-          background: 'rgba(30,20,20,0.45)',
-          color: '#fff7f2',
-          fontSize: 12,
-        }}
-      >
-        Session: {sessionCode}
-      </div>
       <ScoreboardOverlay players={lobbyPlayers} showCombatStats={combatEnabled} />
       <SessionChat
         chat={chat}
-        top={118}
+        top={88}
         width={360}
         maxHeight={360}
         onOpenChange={setChatOpen}
+        showEnterHint={false}
       />
       {combatEnabled ? <ControlsHint /> : null}
       {combatEnabled ? (
@@ -167,8 +164,9 @@ function MuseumSession({
         visible={!museumReady}
         loaded={artworkReadiness.loaded}
         total={artworkReadiness.total}
-        artworksLoading={userArtworks.loading}
+        artworksLoading={sessionArtworks.loading}
       />
+      {!combatEnabled ? <PlaqueInspectOverlay /> : null}
       <Canvas
         shadows
         camera={{ position: [0, 2.5, 10], fov: 60 }}
@@ -190,47 +188,11 @@ function MuseumSession({
           respawnToken={multiplayer.respawnToken}
           museumMap={museumMap}
           onRegenerateMap={onRegenerateMap}
-          artworks={userArtworks.artworks}
-          artworksLoading={userArtworks.loading}
-          artworksReloadToken={artworksReloadToken}
+          sessionCode={sessionCode}
+          artworks={sessionArtworks.artworks}
+          artworksLoading={sessionArtworks.loading}
         />
       </Canvas>
-      <button
-        type="button"
-        onClick={onExitMuseum}
-        style={{
-          position: 'fixed',
-          left: 16,
-          top: 16,
-          zIndex: 70,
-          padding: '8px 10px',
-          borderRadius: 8,
-          border: '1px solid rgba(255,255,255,0.35)',
-          background: 'rgba(30,20,20,0.55)',
-          color: '#fff7f2',
-          cursor: 'pointer',
-        }}
-      >
-        Exit museum
-      </button>
-      <button
-        type="button"
-        onClick={onReloadArtworks}
-        style={{
-          position: 'fixed',
-          left: 16,
-          top: 62,
-          zIndex: 70,
-          padding: '8px 10px',
-          borderRadius: 8,
-          border: '1px solid rgba(255,255,255,0.35)',
-          background: 'rgba(30,20,20,0.55)',
-          color: '#fff7f2',
-          cursor: 'pointer',
-        }}
-      >
-        Reload paintings
-      </button>
     </>
   )
 }
@@ -266,7 +228,7 @@ function ControlsHint() {
       style={{
         position: 'fixed',
         right: 16,
-        top: 110,
+        top: 124,
         zIndex: 50,
         padding: '10px 12px',
         borderRadius: 10,
@@ -289,7 +251,7 @@ function MuseumLoadingOverlay({ visible, loaded, total, artworksLoading }) {
   if (!visible) return null
   const pct = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0
   const label = artworksLoading
-    ? 'Fetching your collection…'
+    ? 'Fetching session collection…'
     : total === 0
       ? 'Preparing the gallery…'
       : `Loading paintings… ${loaded}/${total}`
@@ -364,120 +326,6 @@ function SessionClosingOverlay({ remaining }) {
   )
 }
 
-function AccountTopBar({ displayName, onSignOut, onHome }) {
-  const capsuleColor = capsuleColorFromName(displayName || 'Visitor')
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        right: 16,
-        top: 16,
-        zIndex: 120,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-      }}
-    >
-      {onHome ? (
-        <button
-          type="button"
-          onClick={onHome}
-          style={{
-            padding: '8px 10px',
-            borderRadius: 8,
-            border: '1px solid rgba(255,255,255,0.35)',
-            background: 'rgba(30,20,20,0.55)',
-            color: '#fff7f2',
-            cursor: 'pointer',
-          }}
-        >
-          Home
-        </button>
-      ) : null}
-      <button
-        type="button"
-        onClick={onSignOut}
-        style={{
-          padding: '8px 10px',
-          borderRadius: 8,
-          border: '1px solid rgba(255,255,255,0.35)',
-          background: 'rgba(30,20,20,0.55)',
-          color: '#fff7f2',
-          cursor: 'pointer',
-        }}
-      >
-        Sign out
-      </button>
-      <button
-        type="button"
-        title={displayName || 'Visitor'}
-        aria-label="Profile"
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: 999,
-          border: '2px solid rgba(255,255,255,0.5)',
-          background: 'rgba(30,20,20,0.55)',
-          display: 'grid',
-          placeItems: 'center',
-          cursor: 'default',
-          padding: 0,
-          overflow: 'hidden',
-        }}
-      >
-        <span
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 999,
-            overflow: 'hidden',
-            position: 'relative',
-            background: 'rgba(255,255,255,0.16)',
-          }}
-        >
-          <span
-            style={{
-              position: 'absolute',
-              left: 6,
-              top: 2,
-              width: 18,
-              height: 28,
-              borderRadius: 999,
-              background: capsuleColor,
-              border: '1px solid rgba(20,20,20,0.35)',
-              boxShadow: 'inset 0 -2px 0 rgba(0,0,0,0.16)',
-            }}
-          />
-          <span
-            style={{
-              position: 'absolute',
-              left: 11,
-              top: 10,
-              width: 2,
-              height: 2,
-              borderRadius: 999,
-              background: '#2b1d1a',
-              boxShadow: '6px 0 0 #2b1d1a',
-            }}
-          />
-          <span
-            style={{
-              position: 'absolute',
-              left: 12,
-              top: 14,
-              width: 6,
-              height: 3,
-              border: '1px solid #2b1d1a',
-              borderTop: 'none',
-              borderRadius: '0 0 8px 8px',
-            }}
-          />
-        </span>
-      </button>
-    </div>
-  )
-}
-
 function App() {
   const auth = useSupabaseAuth()
   const [visitorName, setVisitorName] = useState('')
@@ -486,7 +334,6 @@ function App() {
   )
   const [sessionCode, setSessionCode] = useState(() => readSessionCodeFromUrl())
   const [hasEnteredMuseum, setHasEnteredMuseum] = useState(false)
-  const [artworksReloadToken, setArtworksReloadToken] = useState(0)
   const sharedMuseum = useSharedMuseumMap(auth.user?.id, sessionCode)
 
   const handleEnterMuseum = useCallback(() => {
@@ -505,9 +352,6 @@ function App() {
   })
   const handleExitMuseum = useCallback(() => {
     setHasEnteredMuseum(false)
-  }, [])
-  const handleReloadArtworks = useCallback(() => {
-    setArtworksReloadToken((v) => v + 1)
   }, [])
   const handleSignOut = useCallback(async () => {
     setVisitorName('')
@@ -535,6 +379,21 @@ function App() {
       setPathname('/')
     }
   }, [])
+  const handleNavbarNavigate = useCallback(
+    (path) => {
+      if (path === '/home') {
+        handleReturnHome()
+        return
+      }
+      const url =
+        path === '/collection' ? '/museum/collection' : '/museum/add-artwork'
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', url)
+        setPathname(url)
+      }
+    },
+    [handleReturnHome],
+  )
   const handleSessionSelect = useCallback((code) => {
     const normalized = sanitizeSessionCode(code)
     setSessionCode(normalized || null)
@@ -560,7 +419,7 @@ function App() {
   }, [])
 
   if (auth.loading || (sessionCode && sharedMuseum.loading)) {
-    return <div className="museum-gate">Loading...</div>
+    return <Museum3DLoading />
   }
 
   if (pathname === '/museum/home') {
@@ -628,61 +487,50 @@ function App() {
 
   if (!sessionCode) {
     return (
-      <>
-        <AccountTopBar
-          displayName={effectiveDisplayName}
-          onSignOut={handleSignOut}
-          onHome={handleReturnHome}
-        />
-        <SessionGate onSelectSession={handleSessionSelect} userId={auth.user.id} />
-      </>
+      <SessionGate
+        onSelectSession={handleSessionSelect}
+        userId={auth.user.id}
+        displayName={effectiveDisplayName}
+        onNavigate={handleNavbarNavigate}
+        onNavigate3D={handleNavigate3D}
+        onSignOut={handleSignOut}
+      />
     )
   }
 
   if (!hasEnteredMuseum) {
     return (
-      <>
-        <AccountTopBar
-          displayName={effectiveDisplayName}
-          onSignOut={handleSignOut}
-          onHome={handleReturnHome}
-        />
-        <SessionLobby
-          displayName={effectiveDisplayName}
-          sessionCode={sessionCode}
-          chat={sessionChat}
-          onEnterMuseum={handleEnterMuseum}
-        />
-      </>
+      <SessionLobby
+        displayName={effectiveDisplayName}
+        userId={auth.user.id}
+        sessionCode={sessionCode}
+        chat={sessionChat}
+        onEnterMuseum={handleEnterMuseum}
+        onNavigate={handleNavbarNavigate}
+        onNavigate3D={handleNavigate3D}
+        onSignOut={handleSignOut}
+      />
     )
   }
 
   return (
-    <>
-      <AccountTopBar
-        displayName={effectiveDisplayName}
-        onSignOut={handleSignOut}
-        onHome={handleReturnHome}
-      />
-      <MuseumSession
-        displayName={effectiveDisplayName}
-        sessionCode={sessionCode}
-        chat={sessionChat}
-        museumMap={sharedMuseum.museumMap}
-        onRegenerateMap={sharedMuseum.regenerateMap}
-        onReloadArtworks={handleReloadArtworks}
-        artworksReloadToken={artworksReloadToken}
-        onExitMuseum={handleExitMuseum}
-        onHostSessionClosed={() => {
-          setHasEnteredMuseum(false)
-          setSessionCode(null)
-          if (typeof window !== 'undefined') {
-            window.history.pushState({}, '', '/')
-            setPathname('/')
-          }
-        }}
-      />
-    </>
+    <MuseumSession
+      displayName={effectiveDisplayName}
+      userId={auth.user.id}
+      sessionCode={sessionCode}
+      chat={sessionChat}
+      museumMap={sharedMuseum.museumMap}
+      onRegenerateMap={sharedMuseum.regenerateMap}
+      onExitMuseum={handleExitMuseum}
+      onHostSessionClosed={() => {
+        setHasEnteredMuseum(false)
+        setSessionCode(null)
+        if (typeof window !== 'undefined') {
+          window.history.pushState({}, '', '/')
+          setPathname('/')
+        }
+      }}
+    />
   )
 }
 

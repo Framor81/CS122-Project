@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import './SessionChat.css'
 
 export function SessionChat({
   chat,
@@ -7,6 +8,7 @@ export function SessionChat({
   width = 320,
   maxHeight = 320,
   onOpenChange,
+  showEnterHint = true,
 }) {
   const safeChat = chat || {
     active: false,
@@ -87,62 +89,40 @@ export function SessionChat({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [isOpen])
 
-  const panelStyle = {
+  const panelPosition = {
     position: 'fixed',
     [side]: 16,
     top,
-    zIndex: 120,
     width,
     maxHeight,
-    background: 'rgba(10, 10, 10, 0.52)',
-    border: '1px solid rgba(255,255,255,0.18)',
-    borderRadius: 10,
-    backdropFilter: 'blur(3px)',
-    color: '#f6eee8',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
+  }
+
+  const sidePosition = {
+    position: 'fixed',
+    [side]: 20,
+    top: isOpen ? top + maxHeight + 10 : top,
+    maxWidth: Math.min(width + 40, 420),
   }
 
   return (
     <>
       {isOpen ? (
-        <div style={panelStyle}>
-          <div
-            style={{
-              padding: '8px 10px',
-              fontSize: 11,
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              color: 'rgba(255, 244, 235, 0.78)',
-              borderBottom: '1px solid rgba(255,255,255,0.14)',
-            }}
-          >
-            Session Chat (Esc to close)
-          </div>
+        <div className="session-chat-panel" style={panelPosition}>
+          <div className="session-chat-panel__header">Session chat · Esc to close</div>
           <div
             ref={scrollRef}
-            style={{
-              padding: '8px 10px',
-              overflowY: 'auto',
-              minHeight: 100,
-              maxHeight: maxHeight - 86,
-              fontSize: 12,
-              lineHeight: 1.4,
-            }}
+            className="session-chat-panel__scroll"
+            style={{ maxHeight: maxHeight - 86 }}
           >
             {safeChat.messages.length ? (
               safeChat.messages.map((m) => (
-                <div key={m.id} style={{ marginBottom: 5, wordBreak: 'break-word' }}>
-                  <span style={{ color: 'rgba(255,255,255,0.92)', fontWeight: 600 }}>
-                    {m.senderName}
-                  </span>
-                  {': '}
-                  <span style={{ color: 'rgba(255,255,255,0.88)' }}>{m.message}</span>
+                <div key={m.id} className="session-chat-panel__row">
+                  <span className="session-chat-panel__sender">{m.senderName}</span>
+                  <span className="session-chat-panel__body">{': '}{m.message}</span>
                 </div>
               ))
             ) : (
-              <div style={{ color: 'rgba(255,255,255,0.58)' }}>No messages yet.</div>
+              <div className="session-chat-panel__empty">No messages yet.</div>
             )}
           </div>
           <form
@@ -153,6 +133,7 @@ export function SessionChat({
           >
             <input
               ref={inputRef}
+              className="session-chat-panel__input"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder={safeChat.active ? 'Type and press Enter…' : 'Chat unavailable'}
@@ -167,86 +148,26 @@ export function SessionChat({
                   e.stopPropagation()
                 }
               }}
-              style={{
-                border: 'none',
-                borderTop: '1px solid rgba(255,255,255,0.14)',
-                background: 'rgba(12,12,12,0.7)',
-                color: '#fff',
-                padding: '9px 10px',
-                fontSize: 12,
-                outline: 'none',
-                width: '100%',
-              }}
             />
           </form>
           {safeChat.error ? (
-            <div
-              style={{
-                padding: '6px 10px 8px',
-                borderTop: '1px solid rgba(255,255,255,0.08)',
-                color: '#ffccc7',
-                fontSize: 11,
-                lineHeight: 1.3,
-              }}
-            >
-              {safeChat.error}
-            </div>
+            <div className="session-chat-panel__error">{safeChat.error}</div>
           ) : null}
         </div>
       ) : null}
 
-      {/* Lightweight side notifications: plain text with no box */}
-      <div
-        style={{
-          position: 'fixed',
-          [side]: 20,
-          top: isOpen ? top + maxHeight + 10 : top,
-          zIndex: 122,
-          maxWidth: Math.min(width + 40, 420),
-          pointerEvents: 'none',
-        }}
-      >
-        {!isOpen ? (
-          <div
-            style={{
-              marginBottom: 8,
-              color: 'rgba(255,255,255,0.62)',
-              fontSize: 11,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-            }}
-          >
-            Press Enter to chat
-          </div>
+      <div className="session-chat-side" style={sidePosition}>
+        {!isOpen && showEnterHint ? (
+          <div className="session-chat-side__hint">Press Enter to chat</div>
         ) : null}
         {safeChat.incomingToasts.slice(-3).map((toast) => (
-          <div
-            key={toast.id}
-            style={{
-              marginBottom: 6,
-              color: 'rgba(255, 248, 240, 0.96)',
-              textShadow: '0 2px 10px rgba(0,0,0,0.6)',
-              fontSize: 13,
-              lineHeight: 1.35,
-              wordBreak: 'break-word',
-            }}
-          >
+          <div key={toast.id} className="session-chat-side__toast">
             {toast.text}
           </div>
         ))}
         {!isOpen
           ? safeChat.messages.slice(-4).map((m) => (
-              <div
-                key={`peek-${m.id}`}
-                style={{
-                  marginBottom: 4,
-                  color: 'rgba(255, 248, 240, 0.9)',
-                  textShadow: '0 2px 10px rgba(0,0,0,0.6)',
-                  fontSize: 12,
-                  lineHeight: 1.3,
-                  wordBreak: 'break-word',
-                }}
-              >
+              <div key={`peek-${m.id}`} className="session-chat-side__peek">
                 {m.senderName}: {m.message}
               </div>
             ))
@@ -255,4 +176,3 @@ export function SessionChat({
     </>
   )
 }
-

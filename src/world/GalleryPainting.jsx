@@ -1,0 +1,376 @@
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Text, useTexture } from '@react-three/drei'
+import * as THREE from 'three'
+import { usePlaqueTargetsRef } from './usePlaqueTargetsRef.js'
+
+/** Matches `meshFromGrid` / `MuseumLayout`: walls occupy Y ∈ [floor, floor+wallHeight]. */
+const FLOOR_THICKNESS = 0.12
+const WALL_HEIGHT = 7.8
+/** Inside face under the ceiling slab — lights above this end up in solid geometry. */
+const INTERIOR_CEILING_Y = FLOOR_THICKNESS + WALL_HEIGHT
+
+const FRAME_COLOR = '#c9a035'
+const PICTURE_FALLBACK_COLOR = '#252525'
+const PLAQUE_TEXT_COLOR = '#f2ead8'
+const PLAQUE_PANEL_COLOR = '#14110e'
+
+const DEBUG_TEXTURES = (() => {
+  if (typeof window === 'undefined') return false
+  const q = window.location.search
+  return /[?&](debug|debugMuseum|debugTextures)=1\b/.test(q)
+})()
+
+const DEBUG_BEAD_COLORS = {
+  loading: '#ffd84a',
+  ready: '#3acc6a',
+  missing: '#bbbbbb',
+}
+
+function PicturePlane({ url, picW, picH, position, rotation }) {
+  const texture = useTexture(url)
+
+  useEffect(() => {
+    if (!texture) return
+    // Configure GPU texture after load (Three mutates texture objects in place).
+    Object.assign(texture, {
+      colorSpace: THREE.SRGBColorSpace,
+      anisotropy: 8,
+      needsUpdate: true,
+    })
+  }, [texture])
+
+  return (
+    <mesh position={position} rotation={rotation}>
+      <planeGeometry args={[Math.max(0.01, picW), Math.max(0.01, picH)]} />
+      <meshBasicMaterial map={texture} toneMapped={false} side={THREE.DoubleSide} />
+    </mesh>
+  )
+}
+
+function PicturePlaceholder({ picW, picH, position, rotation }) {
+  return (
+    <mesh position={position} rotation={rotation}>
+      <planeGeometry args={[Math.max(0.01, picW), Math.max(0.01, picH)]} />
+      <meshBasicMaterial color={PICTURE_FALLBACK_COLOR} toneMapped={false} side={THREE.DoubleSide} />
+    </mesh>
+  )
+}
+
+function PictureReadyGate({ onReady }) {
+  useEffect(() => {
+    onReady(true)
+    return () => onReady(false)
+  }, [onReady])
+  return null
+}
+
+function DebugBead({ position, status }) {
+  const color = DEBUG_BEAD_COLORS[status] || '#ff00ff'
+  return (
+    <group position={position}>
+      <mesh>
+        <sphereGeometry args={[0.075, 16, 16]} />
+        <meshBasicMaterial color={color} toneMapped={false} />
+      </mesh>
+      <Text
+        position={[0, 0.16, 0]}
+        color={color}
+        fontSize={0.09}
+        outlineWidth={0.012}
+        outlineColor="#000"
+        anchorX="center"
+        anchorY="middle"
+      >
+        {status}
+      </Text>
+    </group>
+  )
+}
+
+const PLAQUE_FS_MIN = 0.032
+const PLAQUE_FS_CAP = 0.086
+
+function plaqueTextMountKey(placementId, text) {
+  const s = String(text)
+  let h = 0
+  for (let i = 0; i < s.length; i += 1) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0
+  }
+  return `${placementId}-${s.length}-${h}`
+}
+
+function resolvePlaqueCopy(plaque, artwork) {
+  if (!artwork) {
+    return { title: 'Untitled', artist: '', description: '' }
+  }
+  const title = ((plaque.title || '').trim() || 'Untitled')
+  const artist = (plaque.artist || '').trim()
+  const description = (plaque.description || '').trim()
+  return { title, artist, description }
+}
+
+function PlaqueMeshText({ position, rotation, plaque, children }) {
+  const maxH = plaque.height * 0.88
+  const maxW = Math.max(0.38, plaque.width * 0.92)
+  const [fontSize, setFontSize] = useState(
+    () => Math.min(PLAQUE_FS_CAP, plaque.height * 0.062),
+  )
+  const shrinkAttempts = useRef(0)
+
+  const onSync = useCallback(
+    (troika) => {
+      troika.updateMatrixWorld(true)
+      const box = new THREE.Box3().setFromObject(troika)
+      if (box.isEmpty()) return
+      const size = new THREE.Vector3()
+      box.getSize(size)
+      if (size.y > maxH && fontSize > PLAQUE_FS_MIN + 1e-4 && shrinkAttempts.current < 28) {
+        shrinkAttempts.current += 1
+        setFontSize((f) => Math.max(PLAQUE_FS_MIN, f * 0.9))
+      }
+    },
+    [fontSize, maxH],
+  )
+
+  return (
+    <Text
+      position={position}
+      rotation={rotation}
+      color={PLAQUE_TEXT_COLOR}
+      fontSize={fontSize}
+      lineHeight={1.2}
+      anchorX="center"
+      anchorY="middle"
+      maxWidth={maxW}
+      textAlign="left"
+      outlineWidth={0.022}
+      outlineColor="#0a0806"
+      renderOrder={1}
+      onSync={onSync}
+    >
+      {children}
+    </Text>
+  )
+}
+
+function PaintingSpotlight({ frame }) {
+  const lightRef = useRef(null)
+  const targetRef = useRef(null)
+
+  const sinY = Math.sin(frame.rotation[1])
+  const cosY = Math.cos(frame.rotation[1])
+
+  const frameCenterY = frame.position[1]
+  const frameTop = frameCenterY + frame.height / 2
+  // Preferred mount height above frame centre (gallery rail position).
+  const desiredY = frameCenterY + frame.height * 0.48 + 0.52
+  // Stay slightly below interior ceiling; stay clearly above frame top when possible.
+  const minY = frameTop + 0.08
+  const maxY = INTERIOR_CEILING_Y - 0.14
+  let ly = desiredY
+  if (minY <= maxY) {
+    ly = Math.min(Math.max(desiredY, minY), maxY)
+  } else {
+    ly = maxY
+  }
+  // If we had to pull the fixture down, move it a bit further into the room so the cone still covers the canvas.
+  const drop = Math.max(0, desiredY - ly)
+  const fwd = 0.72 + drop * 0.55
+
+  const lx = frame.position[0] + sinY * fwd
+  const lz = frame.position[2] + cosY * fwd
+
+  const face = frame.depth / 2 + 0.07
+  const tx = frame.position[0] + sinY * face
+  const ty = frame.position[1]
+  const tz = frame.position[2] + cosY * face
+
+  useLayoutEffect(() => {
+    const L = lightRef.current
+    const T = targetRef.current
+    if (L && T) {
+      L.target = T
+      T.updateMatrixWorld(true)
+    }
+  }, [lx, ly, lz, tx, ty, tz])
+
+  return (
+    <>
+      <group ref={targetRef} position={[tx, ty, tz]} />
+      <spotLight
+        ref={lightRef}
+        position={[lx, ly, lz]}
+        angle={0.38}
+        intensity={48}
+        penumbra={0.85}
+        color="#ffe8c6"
+        distance={60}
+        decay={2}
+        castShadow={false}
+      />
+    </>
+  )
+}
+
+/**
+ * Single gallery unit: warm spotlight, gold frame, artwork plane, plaque text.
+ */
+export function Painting({ placement }) {
+  const { frame, plaque, artwork } = placement
+  const [isReady, setIsReady] = useState(false)
+  const targetsRef = usePlaqueTargetsRef()
+
+  const copy = useMemo(
+    () => resolvePlaqueCopy(plaque, artwork),
+    [plaque, artwork],
+  )
+  const displayText = plaque.text || 'Untitled'
+
+  const innerMaxW = Math.max(0, frame.width - frame.pictureInset * 2)
+  const innerMaxH = Math.max(0, frame.height - frame.pictureInset * 2)
+  const aspect = frame.aspect || (artwork?.aspect ?? null)
+  let picW = innerMaxW
+  let picH = innerMaxH
+  if (aspect && aspect > 0) {
+    const fitH = innerMaxW / aspect
+    if (fitH <= innerMaxH) {
+      picW = innerMaxW
+      picH = fitH
+    } else {
+      picH = innerMaxH
+      picW = innerMaxH * aspect
+    }
+  }
+
+  const sinY = Math.sin(frame.rotation[1])
+  const cosY = Math.cos(frame.rotation[1])
+  const facePush = frame.depth / 2 + 0.012
+  const picturePosition = [
+    frame.position[0] + sinY * facePush,
+    frame.position[1],
+    frame.position[2] + cosY * facePush,
+  ]
+  const plaqueFacePush = plaque.depth / 2 + 0.028
+  const plaquePanelPush = plaque.depth / 2 + 0.012
+
+  const panelPos = [
+    plaque.position[0] + Math.sin(plaque.rotation[1]) * plaquePanelPush,
+    plaque.position[1],
+    plaque.position[2] + Math.cos(plaque.rotation[1]) * plaquePanelPush,
+  ]
+  const textPos = useMemo(
+    () => [
+      plaque.position[0] + Math.sin(plaque.rotation[1]) * plaqueFacePush,
+      plaque.position[1],
+      plaque.position[2] + Math.cos(plaque.rotation[1]) * plaqueFacePush,
+    ],
+    [
+      plaque.position,
+      plaque.rotation,
+      plaqueFacePush,
+    ],
+  )
+
+  useEffect(() => {
+    if (!targetsRef || !artwork) return undefined
+    const map = targetsRef.current
+    const id = placement.id
+    const entry = {
+      id,
+      position: textPos,
+      title: copy.title,
+      artist: copy.artist,
+      description: copy.description,
+    }
+    map.set(id, entry)
+    return () => {
+      map.delete(id)
+    }
+  }, [
+    targetsRef,
+    placement.id,
+    artwork,
+    textPos,
+    copy.title,
+    copy.artist,
+    copy.description,
+  ])
+
+  const url = artwork?.imageUrl || ''
+  const hasUrl = Boolean(url)
+  const debugStatus = !hasUrl ? 'missing' : isReady ? 'ready' : 'loading'
+
+  return (
+    <group>
+      <PaintingSpotlight frame={frame} />
+
+      <mesh position={frame.position} rotation={frame.rotation} castShadow>
+        <boxGeometry args={[frame.width, frame.height, frame.depth]} />
+        <meshStandardMaterial
+          color={FRAME_COLOR}
+          roughness={0.42}
+          metalness={0.52}
+        />
+      </mesh>
+
+      {hasUrl ? (
+        <Suspense
+          fallback={
+            <PicturePlaceholder
+              picW={picW}
+              picH={picH}
+              position={picturePosition}
+              rotation={frame.rotation}
+            />
+          }
+        >
+          <PictureReadyGate onReady={setIsReady} />
+          <PicturePlane
+            url={url}
+            picW={picW}
+            picH={picH}
+            position={picturePosition}
+            rotation={frame.rotation}
+          />
+        </Suspense>
+      ) : (
+        <PicturePlaceholder
+          picW={picW}
+          picH={picH}
+          position={picturePosition}
+          rotation={frame.rotation}
+        />
+      )}
+
+      <mesh position={panelPos} rotation={plaque.rotation} renderOrder={-1}>
+        <planeGeometry args={[Math.max(0.4, plaque.width * 1.12), Math.max(0.35, plaque.height * 1.18)]} />
+        <meshBasicMaterial
+          color={PLAQUE_PANEL_COLOR}
+          transparent
+          opacity={0.94}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      <PlaqueMeshText
+        key={plaqueTextMountKey(placement.id, displayText)}
+        position={textPos}
+        rotation={plaque.rotation}
+        plaque={plaque}
+      >
+        {displayText}
+      </PlaqueMeshText>
+
+      {DEBUG_TEXTURES ? (
+        <DebugBead
+          position={[
+            frame.position[0] + sinY * (facePush + 0.01),
+            frame.position[1] + frame.height / 2 + 0.18,
+            frame.position[2] + cosY * (facePush + 0.01),
+          ]}
+          status={debugStatus}
+        />
+      ) : null}
+    </group>
+  )
+}

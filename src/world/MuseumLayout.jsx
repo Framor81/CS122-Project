@@ -2,19 +2,23 @@ import { Text } from '@react-three/drei'
 import { useEffect, useMemo } from 'react'
 import { generateMuseumGrid } from './generateMuseumGrid.js'
 import { meshFromGrid } from './meshFromGrid.js'
+import { CeilingLightsLayer } from './CeilingLightsLayer.jsx'
 import { FramesLayer } from './FramesLayer.jsx'
 import { debugReport } from '../lib/debugBus.js'
 
-const FLOOR_COLOR = '#ead9cf'
-const WALL_COLOR_A = '#f4ebe4'
-const WALL_COLOR_B = '#f2e7de'
+/** Warm floor vs cooler slate walls so planes separate; walls bright enough for lighting/fog depth. */
+const FLOOR_COLOR = '#3f3834'
+/** Alternating slate tones — corners and hall length read instead of a flat black hole. */
+const WALL_COLOR_A = '#434a56'
+const WALL_COLOR_B = '#3b414c'
+/** Slightly darker than walls so the volume reads as a box. */
+const CEILING_COLOR = '#2f3238'
 
 export function MuseumLayout({
   seed = 'museum-seed-alpha',
   grid,
   meta,
   artworks = [],
-  artworksReloadToken = 0,
   debug = false,
 }) {
   const wallParams = useMemo(
@@ -27,11 +31,12 @@ export function MuseumLayout({
     [],
   )
 
-  const { mesh, usedMeta } = useMemo(() => {
+  const { mesh, usedMeta, layoutGrid } = useMemo(() => {
     const generated = grid && meta ? { grid, meta } : generateMuseumGrid(seed)
     return {
       mesh: meshFromGrid(generated.grid, wallParams),
       usedMeta: generated.meta,
+      layoutGrid: generated.grid,
     }
   }, [seed, grid, meta, wallParams])
 
@@ -52,7 +57,13 @@ export function MuseumLayout({
       {mesh.floors.map((f, idx) => (
         <mesh key={`f-${idx}`} position={f.center} receiveShadow>
           <boxGeometry args={f.size} />
-          <meshStandardMaterial color={FLOOR_COLOR} roughness={0.95} />
+          <meshStandardMaterial
+            color={FLOOR_COLOR}
+            roughness={0.65}
+            metalness={0}
+            emissive="#1a1512"
+            emissiveIntensity={0.09}
+          />
         </mesh>
       ))}
 
@@ -62,6 +73,9 @@ export function MuseumLayout({
           <meshStandardMaterial
             color={idx % 2 === 0 ? WALL_COLOR_A : WALL_COLOR_B}
             roughness={0.9}
+            metalness={0}
+            emissive={idx % 2 === 0 ? '#2a3038' : '#252b34'}
+            emissiveIntensity={0.055}
           />
         </mesh>
       ))}
@@ -69,9 +83,17 @@ export function MuseumLayout({
       {mesh.ceilings.map((c, idx) => (
         <mesh key={`ceil-${idx}`} position={c.center} receiveShadow>
           <boxGeometry args={c.size} />
-          <meshStandardMaterial color="#e3d5c6" roughness={0.98} />
+          <meshStandardMaterial
+            color={CEILING_COLOR}
+            roughness={0.9}
+            metalness={0}
+            emissive="#22252c"
+            emissiveIntensity={0.04}
+          />
         </mesh>
       ))}
+
+      <CeilingLightsLayer grid={layoutGrid} meta={usedMeta} wallParams={wallParams} />
 
       {Array.isArray(artworks) ? (
         <FramesLayer
@@ -80,7 +102,6 @@ export function MuseumLayout({
           floorThickness={wallParams.floorThickness}
           wallThickness={wallParams.wallThickness}
           artworks={artworks}
-          reloadToken={artworksReloadToken}
         />
       ) : null}
 

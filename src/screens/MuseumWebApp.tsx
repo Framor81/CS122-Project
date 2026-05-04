@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient.js'
 import { useUserArtworks } from '../hooks/useUserArtworks.js'
+import { MuseumNavbar } from '../components/MuseumNavbar.jsx'
 import './MuseumClassicHome.css'
 
 type AuthApi = {
@@ -42,53 +43,6 @@ type ArtworkDetail = {
 function museumPath(path: string) {
   if (path === '/home') return '/'
   return `/museum${path}`
-}
-
-/* -------------------- Authenticated top nav -------------------- */
-
-function AuthedNav({
-  displayName,
-  activeRoute,
-  onNavigate,
-  onSignOut,
-}: {
-  displayName: string
-  activeRoute: string
-  onNavigate: (path: string) => void
-  onSignOut: () => void
-}) {
-  return (
-    <nav className="site-nav">
-      <button type="button" className="brand" onClick={() => onNavigate('/home')}>
-        MUSEUM
-      </button>
-      <div className="nav-links">
-        <button
-          type="button"
-          className={activeRoute === '/home' ? 'is-active' : ''}
-          onClick={() => onNavigate('/home')}
-        >
-          HOME
-        </button>
-        <button
-          type="button"
-          className={activeRoute === '/collection' ? 'is-active' : ''}
-          onClick={() => onNavigate('/collection')}
-        >
-          COLLECTION
-        </button>
-      </div>
-      <div className="nav-actions">
-        <span className="user-chip">{displayName}</span>
-        <button type="button" className="btn" onClick={() => onNavigate('/add-artwork')}>
-          + Add Artwork
-        </button>
-        <button type="button" className="btn btn-ghost" onClick={onSignOut}>
-          Sign Out
-        </button>
-      </div>
-    </nav>
-  )
 }
 
 /* -------------------- Welcome (unauthenticated home) -------------------- */
@@ -299,11 +253,12 @@ function MuseumHome({
 }) {
   return (
     <div className="museum-classic homepage-1-1">
-      <AuthedNav
+      <MuseumNavbar
         displayName={displayName}
         activeRoute="/home"
         onNavigate={onNavigate}
         onSignOut={onSignOut}
+        onNavigate3D={onNavigate3D}
       />
 
       <section className="hero">
@@ -357,13 +312,15 @@ function MuseumCollection({
   displayName,
   onNavigate,
   onSignOut,
+  onNavigate3D,
 }: {
   userId: string
   displayName: string
   onNavigate: (path: string) => void
   onSignOut: () => void
+  onNavigate3D: () => void
 }) {
-  const { artworks, loading, error } = useUserArtworks(userId)
+  const { artworks, loading, error, reload } = useUserArtworks(userId)
   const typedArtworks = artworks as Array<{
     id: string
     title: string | null
@@ -372,8 +329,15 @@ function MuseumCollection({
     themes: string[] | null
     status: string | null
     imageUrl: string
+    image_path: string
   }>
   const [activeFilter, setActiveFilter] = useState('ALL')
+  const [reanalyzeProgress, setReanalyzeProgress] = useState<{
+    current: number
+    total: number
+  } | null>(null)
+  const [actionBanner, setActionBanner] = useState<{ text: string; kind?: 'error' } | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const filters = useMemo(() => {
     const tags = new Set(['ALL'])
@@ -390,13 +354,80 @@ function MuseumCollection({
     )
   }, [activeFilter, typedArtworks])
 
+  const reanalyzeCollection = async () => {
+    if (!supabase || typedArtworks.length === 0 || reanalyzeProgress) return
+    const ok = window.confirm(
+      `Re-analyze all ${typedArtworks.length} artwork(s)? This runs AI on each image and may take a few minutes.`,
+    )
+    if (!ok) return
+    setActionBanner(null)
+    let errorCount = 0
+    for (let i = 0; i < typedArtworks.length; i += 1) {
+      const art = typedArtworks[i]
+      setReanalyzeProgress({ current: i + 1, total: typedArtworks.length })
+      await supabase
+        .from('artworks')
+        .update({ status: 'pending', error_message: null })
+        .eq('id', art.id)
+      const result = await supabase.functions.invoke('recognize-artwork', {
+        body: { artwork_id: art.id },
+      })
+      if (result.error) {
+        errorCount += 1
+        await supabase
+          .from('artworks')
+          .update({
+            status: 'error',
+            error_message: result.error.message || 'Recognition failed.',
+          })
+          .eq('id', art.id)
+      }
+    }
+    setReanalyzeProgress(null)
+    setActionBanner(
+      errorCount > 0
+        ? {
+            text: `Finished with ${errorCount} error(s). Open an artwork for details, or try again.`,
+            kind: 'error',
+          }
+        : { text: 'Tags and metadata refreshed for your whole collection.' },
+    )
+    await reload()
+  }
+
+  const deleteArtwork = async (art: (typeof typedArtworks)[0]) => {
+    if (!supabase || deletingId) return
+    const ok = window.confirm('Remove this artwork from your collection? This cannot be undone.')
+    if (!ok) return
+    setActionBanner(null)
+    setDeletingId(art.id)
+    try {
+      const { error: storageErr } = await supabase.storage.from('artworks').remove([art.image_path])
+      if (storageErr) {
+        console.warn(storageErr)
+      }
+      const { error: rowErr } = await supabase.from('artworks').delete().eq('id', art.id)
+      if (rowErr) throw rowErr
+    } catch (err) {
+      setActionBanner({
+        text: err instanceof Error ? err.message : 'Could not delete artwork.',
+        kind: 'error',
+      })
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const reanalyzeBusy = Boolean(reanalyzeProgress)
+
   return (
     <div className="museum-classic">
-      <AuthedNav
+      <MuseumNavbar
         displayName={displayName}
         activeRoute="/collection"
         onNavigate={onNavigate}
         onSignOut={onSignOut}
+        onNavigate3D={onNavigate3D}
       />
 
       <div className="collection-page">
@@ -405,49 +436,96 @@ function MuseumCollection({
             <p className="eyebrow">Your Collection</p>
             <h1>All Works</h1>
           </div>
+          {typedArtworks.length > 0 && hasSupabaseConfig ? (
+            <div className="collection-head-actions">
+              <button
+                type="button"
+                className="btn"
+                disabled={reanalyzeBusy || loading || !supabase}
+                onClick={() => {
+                  void reanalyzeCollection()
+                }}
+              >
+                {reanalyzeBusy && reanalyzeProgress
+                  ? `Refreshing tags… (${reanalyzeProgress.current}/${reanalyzeProgress.total})`
+                  : 'Refresh tags'}
+              </button>
+            </div>
+          ) : null}
         </div>
 
-        <div className="filter-bar">
-          {filters.map((f) => (
-            <button
-              key={f}
-              type="button"
-              className={`chip ${activeFilter === f ? 'is-active' : ''}`}
-              onClick={() => setActiveFilter(f)}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+        {typedArtworks.length > 0 ? (
+          <div className="filter-bar">
+            {filters.map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={`chip ${activeFilter === f ? 'is-active' : ''}`}
+                onClick={() => setActiveFilter(f)}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {loading ? <p className="page-status">Loading your collection…</p> : null}
         {error ? <p className="page-status" data-kind="error">{error}</p> : null}
         {!loading && !error && typedArtworks.length === 0 ? (
-          <p className="page-status">No artworks yet. Add one to begin.</p>
+          <div className="collection-empty">
+            <button
+              type="button"
+              className="collection-empty-cta"
+              onClick={() => onNavigate('/add-artwork')}
+            >
+              <span className="collection-empty-cta__plus" aria-hidden>
+                +
+              </span>
+              <span className="collection-empty-cta__label">Add artwork</span>
+            </button>
+            <p className="page-status collection-empty-hint">No artworks yet. Add one to begin.</p>
+          </div>
+        ) : null}
+        {actionBanner ? (
+          <p className="page-status" data-kind={actionBanner.kind === 'error' ? 'error' : undefined}>
+            {actionBanner.text}
+          </p>
         ) : null}
 
         <div className="art-grid">
           {visible.map((art) => (
-            <button
-              key={art.id}
-              type="button"
-              className="art-card"
-              onClick={() => onNavigate(`/artwork?id=${art.id}`)}
-            >
-              <div
-                className="thumb"
-                style={{ backgroundImage: `url("${art.imageUrl || ''}")` }}
-              />
-              <div className="meta">
-                <p className="title">
-                  {art.title || (art.status === 'pending' ? 'Identifying…' : 'Untitled')}
-                </p>
-                <p className="subtitle">
-                  {art.artist || 'Unknown'}
-                  {art.date_text ? ` · ${art.date_text}` : ''}
-                </p>
-              </div>
-            </button>
+            <div key={art.id} className="art-card">
+              <button
+                type="button"
+                className="art-card-main"
+                onClick={() => onNavigate(`/artwork?id=${art.id}`)}
+              >
+                <div
+                  className="thumb"
+                  style={{ backgroundImage: `url("${art.imageUrl || ''}")` }}
+                />
+                <div className="meta">
+                  <p className="title">
+                    {art.title || (art.status === 'pending' ? 'Identifying…' : 'Untitled')}
+                  </p>
+                  <p className="subtitle">
+                    {art.artist || 'Unknown'}
+                    {art.date_text ? ` · ${art.date_text}` : ''}
+                  </p>
+                </div>
+              </button>
+              <button
+                type="button"
+                className="art-card-delete"
+                disabled={deletingId === art.id || reanalyzeBusy}
+                aria-label="Delete artwork"
+                onClick={() => {
+                  void deleteArtwork(art)
+                }}
+              >
+                Delete
+              </button>
+            </div>
           ))}
         </div>
       </div>
@@ -462,69 +540,112 @@ function MuseumAddArtwork({
   displayName,
   onNavigate,
   onSignOut,
+  onNavigate3D,
 }: {
   userId: string
   displayName: string
   onNavigate: (path: string) => void
   onSignOut: () => void
+  onNavigate3D: () => void
 }) {
   const [status, setStatus] = useState('')
 
   return (
     <div className="museum-classic">
-      <AuthedNav
+      <MuseumNavbar
         displayName={displayName}
         activeRoute="/add-artwork"
         onNavigate={onNavigate}
         onSignOut={onSignOut}
+        onNavigate3D={onNavigate3D}
       />
 
       <div className="add-page">
         <h1>Add Images to your Gallery</h1>
         <label className="upload-zone">
-          <span>Drag or click to upload an image</span>
+          <span className="upload-zone__title">Drag or click to upload images</span>
+          <span className="upload-zone__hint">Select one or multiple photos</span>
           <input
             type="file"
             hidden
             accept="image/*"
+            multiple
             onChange={(e) => {
               void (async () => {
-                const file = e.target.files?.[0]
-                if (!file || !supabase) return
+                const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/'))
+                e.target.value = ''
+                if (files.length === 0 || !supabase) return
+                const total = files.length
+                const ids: string[] = []
+                const failures: string[] = []
                 try {
-                  setStatus('Uploading image…')
-                  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
-                  const path = `${userId}/${crypto.randomUUID()}.${ext}`
-                  const upload = await supabase.storage
-                    .from('artworks')
-                    .upload(path, file, { contentType: file.type, upsert: false })
-                  if (upload.error) throw upload.error
-
-                  const created = await supabase
-                    .from('artworks')
-                    .insert({ user_id: userId, image_path: path, status: 'pending' })
-                    .select('id')
-                    .single()
-                  if (created.error || !created.data?.id) {
-                    throw created.error || new Error('Failed to create row.')
-                  }
-
-                  setStatus('Identifying artwork…')
-                  const result = await supabase.functions.invoke('recognize-artwork', {
-                    body: { artwork_id: created.data.id },
-                  })
-                  if (result.error) {
-                    await supabase
+                  for (let i = 0; i < files.length; i += 1) {
+                    const file = files[i]
+                    const n = i + 1
+                    setStatus(`Uploading ${n}/${total}…`)
+                    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+                    const path = `${userId}/${crypto.randomUUID()}.${ext}`
+                    const upload = await supabase.storage
                       .from('artworks')
-                      .update({
-                        status: 'error',
-                        error_message:
-                          result.error.message || 'AI recognition is not configured yet.',
-                      })
-                      .eq('id', created.data.id)
+                      .upload(path, file, { contentType: file.type, upsert: false })
+                    if (upload.error) {
+                      failures.push(`${file.name}: ${upload.error.message}`)
+                      continue
+                    }
+
+                    const created = await supabase
+                      .from('artworks')
+                      .insert({ user_id: userId, image_path: path, status: 'pending' })
+                      .select('id')
+                      .single()
+                    if (created.error || !created.data?.id) {
+                      failures.push(
+                        `${file.name}: ${created.error?.message || 'Could not save artwork.'}`,
+                      )
+                      continue
+                    }
+
+                    const artworkId = created.data.id
+                    ids.push(artworkId)
+                    setStatus(`Identifying ${n}/${total}…`)
+                    const result = await supabase.functions.invoke('recognize-artwork', {
+                      body: { artwork_id: artworkId },
+                    })
+                    if (result.error) {
+                      await supabase
+                        .from('artworks')
+                        .update({
+                          status: 'error',
+                          error_message:
+                            result.error.message || 'AI recognition is not configured yet.',
+                        })
+                        .eq('id', artworkId)
+                    }
                   }
 
-                  onNavigate(`/artwork?id=${created.data.id}`)
+                  if (ids.length === 0) {
+                    setStatus(
+                      failures.length > 0
+                        ? failures.join(' ')
+                        : 'No images could be uploaded.',
+                    )
+                    return
+                  }
+
+                  if (failures.length > 0) {
+                    setStatus(
+                      `Added ${ids.length} of ${total}. ${failures.slice(0, 2).join(' ')}${failures.length > 2 ? '…' : ''}`,
+                    )
+                    await new Promise((r) => setTimeout(r, 2600))
+                  } else {
+                    setStatus('')
+                  }
+
+                  if (ids.length === 1) {
+                    onNavigate(`/artwork?id=${ids[0]}`)
+                  } else {
+                    onNavigate('/collection')
+                  }
                 } catch (err) {
                   setStatus(err instanceof Error ? err.message : 'Upload failed.')
                 }
@@ -544,11 +665,13 @@ function MuseumArtworkDetail({
   displayName,
   onNavigate,
   onSignOut,
+  onNavigate3D,
   artworkId,
 }: {
   displayName: string
   onNavigate: (path: string) => void
   onSignOut: () => void
+  onNavigate3D: () => void
   artworkId: string | null
 }) {
   const [status, setStatus] = useState('Loading…')
@@ -606,11 +729,12 @@ function MuseumArtworkDetail({
   if (!artwork) {
     return (
       <div className="museum-classic">
-        <AuthedNav
+        <MuseumNavbar
           displayName={displayName}
           activeRoute="/collection"
           onNavigate={onNavigate}
           onSignOut={onSignOut}
+          onNavigate3D={onNavigate3D}
         />
         <div className="add-page">
           <p className="page-status">{status}</p>
@@ -630,11 +754,12 @@ function MuseumArtworkDetail({
 
   return (
     <div className="museum-classic">
-      <AuthedNav
+      <MuseumNavbar
         displayName={displayName}
         activeRoute="/collection"
         onNavigate={onNavigate}
         onSignOut={onSignOut}
+        onNavigate3D={onNavigate3D}
       />
 
       <div className="detail-page">
@@ -803,6 +928,7 @@ export function MuseumWebApp({ auth, displayName, onSignedInName, onNavigate3D }
         displayName={displayName}
         onNavigate={navigate}
         onSignOut={handleSignOut}
+        onNavigate3D={onNavigate3D}
       />
     )
   }
@@ -814,6 +940,7 @@ export function MuseumWebApp({ auth, displayName, onSignedInName, onNavigate3D }
         displayName={displayName}
         onNavigate={navigate}
         onSignOut={handleSignOut}
+        onNavigate3D={onNavigate3D}
       />
     )
   }
@@ -824,6 +951,7 @@ export function MuseumWebApp({ auth, displayName, onSignedInName, onNavigate3D }
         displayName={displayName}
         onNavigate={navigate}
         onSignOut={handleSignOut}
+        onNavigate3D={onNavigate3D}
         artworkId={artworkId}
       />
     )
@@ -831,11 +959,12 @@ export function MuseumWebApp({ auth, displayName, onSignedInName, onNavigate3D }
 
   return (
     <div className="museum-classic">
-      <AuthedNav
+      <MuseumNavbar
         displayName={displayName}
         activeRoute="/home"
         onNavigate={navigate}
         onSignOut={handleSignOut}
+        onNavigate3D={onNavigate3D}
       />
       <div className="add-page">
         <h1>Page not found</h1>

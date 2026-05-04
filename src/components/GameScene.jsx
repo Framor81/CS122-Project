@@ -1,62 +1,20 @@
-import { ContactShadows, PointerLockControls, Text } from '@react-three/drei'
-import { useFrame, useThree } from '@react-three/fiber'
+import { PointerLockControls } from '@react-three/drei'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { CombatLayer } from '../gamemode/CombatLayer.jsx'
+import { PlaqueInspectBridge } from '../world/PlaqueInspectBridge.jsx'
+import { PlaqueTargetsProvider } from '../world/PlaqueTargetsProvider.jsx'
 import { Player } from './Player.jsx'
 import { RemotePlayers } from './RemotePlayers.jsx'
 import { MuseumLayout } from '../world/MuseumLayout.jsx'
 import { generateMuseumGrid } from '../world/generateMuseumGrid.js'
+import { meshFromGrid } from '../world/meshFromGrid.js'
+import { estimatePlaceableArtworkCount } from '../world/generateFramePlacements.js'
+import { prepareGalleryArtworks } from '../world/prepareGalleryArtworks.js'
 
-// Pastel terracotta / playroom palette
-const SKY = '#ffe5dc'
-const FOG = '#f5d0c8'
-const GRASS = '#c0dcc8'
-const CUBE_TERRA = '#d88772'
-const HEMI_SKY = '#fff5f0'
-const HEMI_GROUND = '#c8e0c8'
-const SUN_CORE = '#ffd56f'
-const SUN_EDGE = '#e98e68'
-
-function MovingSunLight() {
-  const lightRef = useRef(null)
-  const target = useMemo(() => new THREE.Object3D(), [])
-  const { camera } = useThree()
-
-  useFrame(() => {
-    if (!lightRef.current) return
-
-    const followX = camera.position.x
-    const followZ = camera.position.z
-
-    lightRef.current.position.set(followX + 14, 24, followZ + 10)
-    target.position.set(followX, 0, followZ)
-    lightRef.current.target = target
-    lightRef.current.target.updateMatrixWorld()
-  })
-
-  return (
-    <>
-      <primitive object={target} />
-      <directionalLight
-        ref={lightRef}
-        castShadow
-        intensity={1.05}
-        color="#fff6ee"
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-bias={-0.00006}
-        shadow-normalBias={0.03}
-        shadow-camera-near={1}
-        shadow-camera-far={120}
-        shadow-camera-left={-55}
-        shadow-camera-right={55}
-        shadow-camera-top={55}
-        shadow-camera-bottom={-55}
-      />
-    </>
-  )
-}
+const BG = '#0a0a0a'
+/** Exterior ground — match interior floor read under fog. */
+const GROUND = '#3f3834'
 
 export function GameScene({
   displayName,
@@ -74,9 +32,9 @@ export function GameScene({
   respawnToken,
   museumMap,
   onRegenerateMap,
+  sessionCode = '',
   artworks = null,
   artworksLoading = false,
-  artworksReloadToken = 0,
 }) {
   const { remotePlayers, sendTransform } = multiplayer
   const showMuseumDebug = useMemo(() => {
@@ -89,6 +47,34 @@ export function GameScene({
     () => generateMuseumGrid(museumSeedText, museumGridSize),
     [museumSeedText, museumGridSize],
   )
+
+  const wallMeshParams = useMemo(
+    () => ({
+      floorThickness: 0.12,
+      wallHeight: 7.8,
+      wallThickness: 0.22,
+    }),
+    [],
+  )
+
+  const museumWalls = useMemo(() => {
+    const { walls } = meshFromGrid(museum.grid, wallMeshParams)
+    return walls
+  }, [museum.grid, wallMeshParams])
+
+  const preparedArtworks = useMemo(() => {
+    if (!artworks || artworks.length === 0) return []
+    const maxSlots = estimatePlaceableArtworkCount(museumWalls, wallMeshParams)
+    const seed = `${sessionCode}|${museumSeedText}|${museumGridSize}`
+    return prepareGalleryArtworks(artworks, maxSlots, seed)
+  }, [
+    artworks,
+    museumGridSize,
+    museumSeedText,
+    museumWalls,
+    sessionCode,
+    wallMeshParams,
+  ])
 
   // Press `P` to generate and publish a brand new shared map.
   useEffect(() => {
@@ -110,9 +96,6 @@ export function GameScene({
   )
   const worldSize = museum.grid.width * museum.grid.cellSize
   const groundSize = worldSize * 1.12
-  const fogFar = Math.max(52, groundSize * 0.62)
-  const contactScale = Math.min(200, groundSize)
-  const contactFar = Math.min(180, groundSize * 0.6)
   const muzzleRef = useRef({
     origin: new THREE.Vector3(0, 1, 0),
     direction: new THREE.Vector3(0, 0, 1),
@@ -122,58 +105,62 @@ export function GameScene({
 
   return (
     <>
-      <color attach="background" args={[SKY]} />
-      <fog attach="fog" args={[FOG, 14, fogFar]} />
+      <color attach="background" args={[BG]} />
+      {/* Combat: tight fog. Museum: wide + slightly lifted fog color so geometry isn't erased to pure black. */}
+      <fog
+        attach="fog"
+        args={
+          combatEnabled
+            ? [BG, 5, 20]
+            : ['#101010', 18, 110]
+        }
+      />
 
-      <hemisphereLight args={[HEMI_SKY, HEMI_GROUND, 0.65]} />
-      <ambientLight intensity={0.38} color="#ffece8" />
-      <MovingSunLight />
-
-      <mesh position={[34, 30, 24]}>
-        <sphereGeometry args={[4.8, 32, 32]} />
-        <meshBasicMaterial color={SUN_CORE} />
-      </mesh>
-      <mesh position={[34, 30, 24]}>
-        <sphereGeometry args={[5.5, 32, 32]} />
-        <meshBasicMaterial color={SUN_EDGE} transparent opacity={0.35} />
-      </mesh>
+      {combatEnabled ? (
+        <>
+          <ambientLight intensity={0.15} />
+          <directionalLight position={[0, 5, 5]} intensity={0.3} />
+        </>
+      ) : (
+        <>
+          <ambientLight intensity={0.52} color="#ebe9e6" />
+          <hemisphereLight
+            color="#4a4844"
+            groundColor="#2a2622"
+            intensity={0.38}
+          />
+          <directionalLight
+            position={[2, 12, 8]}
+            intensity={0.55}
+            color="#faf8f4"
+          />
+          <directionalLight
+            position={[-8, 5, -6]}
+            intensity={0.28}
+            color="#c4beb6"
+          />
+          <directionalLight
+            position={[5, 2, -10]}
+            intensity={0.14}
+            color="#8a8580"
+          />
+        </>
+      )}
 
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[groundSize, groundSize]} />
-        <meshStandardMaterial
-          color={GRASS}
-          roughness={0.92}
-          metalness={0.02}
-        />
+        <meshStandardMaterial color={GROUND} roughness={0.6} />
       </mesh>
-
-      <mesh position={[0, 1, 0]} castShadow>
-        <boxGeometry args={[2, 2, 2]} />
-        <meshStandardMaterial
-          color={CUBE_TERRA}
-          roughness={0.55}
-          metalness={0.06}
-          emissive={CUBE_TERRA}
-          emissiveIntensity={0.08}
+      <PlaqueTargetsProvider>
+        <MuseumLayout
+          seed={museumSeedText}
+          grid={museum.grid}
+          meta={museum.meta}
+          artworks={artworksLoading ? null : preparedArtworks}
+          debug={showMuseumDebug}
         />
-      </mesh>
-      <MuseumLayout
-        seed={museumSeedText}
-        grid={museum.grid}
-        meta={museum.meta}
-        artworks={artworksLoading ? null : artworks}
-        artworksReloadToken={artworksReloadToken}
-        debug={showMuseumDebug}
-      />
-      <ContactShadows
-        position={[0, 0.01, 0]}
-        opacity={0.4}
-        scale={contactScale}
-        blur={2.6}
-        far={contactFar}
-        color="#8f5e53"
-      />
-
+        <PlaqueInspectBridge chatOpen={chatOpen} combatEnabled={combatEnabled} />
+      </PlaqueTargetsProvider>
       <RemotePlayers players={remotePlayers} localId={localId} />
       {combatEnabled ? (
         <CombatLayer
@@ -209,21 +196,6 @@ export function GameScene({
       />
 
       <PointerLockControls selector="body" enabled={!chatOpen} />
-      <Text
-        position={[0, 3.6, -2]}
-        color="#8b4e46"
-        fontSize={0.38}
-        outlineWidth={0.04}
-        outlineColor="#fff8f5"
-        anchorX="center"
-        anchorY="middle"
-        maxWidth={4.5}
-        textAlign="center"
-      >
-        {chatOpen
-          ? 'Chat open • Press Esc to close'
-          : 'Click to lock • WASD move • Space jump • Enter chat'}
-      </Text>
     </>
   )
 }

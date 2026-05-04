@@ -1,0 +1,135 @@
+/* Aligns session chat with museum / 3D shell: sharp geometry, gold accent, Inter */
+
+.session-chat-panel {
+  position: fixed;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Helvetica,
+    Arial,
+    sans-serif;
+  background: rgba(8, 8, 8, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  color: #e5e5e5;
+}
+
+.session-chat-panel__header {
+  padding: 10px 14px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(163, 163, 163, 0.9);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.session-chat-panel__scroll {
+  padding: 12px 14px;
+  overflow-y: auto;
+  min-height: 100px;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+.session-chat-panel__row {
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.session-chat-panel__sender {
+  color: rgba(232, 220, 208, 0.95);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.session-chat-panel__body {
+  color: rgba(245, 240, 234, 0.88);
+}
+
+.session-chat-panel__empty {
+  color: rgba(245, 240, 234, 0.45);
+  font-size: 12px;
+}
+
+.session-chat-panel__input {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.35);
+  color: #e5e5e5;
+  padding: 11px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.session-chat-panel__input::placeholder {
+  color: rgba(245, 240, 234, 0.35);
+}
+
+.session-chat-panel__input:focus {
+  background: rgba(5, 4, 3, 0.95);
+}
+
+.session-chat-panel__error {
+  padding: 8px 14px 10px;
+  border-top: 1px solid rgba(197, 160, 89, 0.12);
+  color: #e8a598;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.session-chat-side {
+  position: fixed;
+  z-index: 122;
+  pointer-events: none;
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Helvetica,
+    Arial,
+    sans-serif;
+}
+
+.session-chat-side__hint {
+  margin-bottom: 10px;
+  color: rgba(163, 163, 163, 0.85);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.session-chat-side__toast {
+  margin-bottom: 8px;
+  color: rgba(245, 240, 234, 0.94);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 400;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.65);
+  word-break: break-word;
+}
+
+.session-chat-side__peek {
+  margin-bottom: 6px;
+  color: rgba(245, 240, 234, 0.88);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 400;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.65);
+  word-break: break-word;
+}

@@ -5,12 +5,19 @@ import { Buffer } from 'node:buffer'
 import process from 'node:process'
 import { fileURLToPath, URL } from 'node:url'
 
+import {
+  normalizeArtworkThemes,
+  THEMES_PROMPT_SECTION,
+} from './supabase/functions/recognize-artwork/artworkThemes.js'
+
 const OPENROUTER_MODEL = 'nvidia/nemotron-nano-12b-v2-vl:free'
 
 const PROMPT = `You are an expert art historian analyzing a photograph of an artwork
 taken inside a museum. Identify the artwork if you can, and describe it in a way
 that gives the viewer rich context: the artist, period, themes, and a short
 narrative description.
+
+${THEMES_PROMPT_SECTION}
 
 Respond with ONLY a JSON object (no prose, no markdown fences) matching this shape:
 
@@ -28,8 +35,8 @@ Respond with ONLY a JSON object (no prose, no markdown fences) matching this sha
 }
 
 If you cannot identify the artwork, still return the JSON but set title/artist/etc.
-to null and describe what you see and the themes you observe. Never return prose
-outside the JSON.`
+to null and describe what you see and apply themes from the allowed list only.
+Never return prose outside the JSON.`
 
 function stringOrNull(v) {
   if (typeof v === 'string' && v.trim().length > 0) return v
@@ -208,6 +215,7 @@ function localRecognitionPlugin(env) {
           return
         }
 
+        const themes = normalizeArtworkThemes(parsed.themes)
         const update = {
           status: 'ready',
           title: stringOrNull(parsed.title),
@@ -218,10 +226,8 @@ function localRecognitionPlugin(env) {
           dimensions: stringOrNull(parsed.dimensions),
           location_guess: stringOrNull(parsed.location_guess),
           description: stringOrNull(parsed.description) || '',
-          themes: Array.isArray(parsed.themes)
-            ? parsed.themes.filter((t) => typeof t === 'string')
-            : [],
-          raw_ai: parsed,
+          themes,
+          raw_ai: { ...parsed, themes, themes_from_model: parsed.themes },
           error_message: null,
         }
 
