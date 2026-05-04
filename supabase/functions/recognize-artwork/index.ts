@@ -85,15 +85,20 @@ Deno.serve(async (req) => {
     return json({ error: "missing bearer token" }, 401);
   }
 
-  let payload: RecognizePayload;
+  let payloadRoot: unknown;
   try {
-    payload = await req.json();
+    payloadRoot = await req.json();
   } catch {
     return json({ error: "invalid json body" }, 400);
   }
-  if (!payload.artwork_id) {
+  if (!isJsonObject(payloadRoot)) {
+    return json({ error: "json body must be an object" }, 400);
+  }
+  const artworkId = payloadRoot.artwork_id;
+  if (!artworkId || typeof artworkId !== "string") {
     return json({ error: "artwork_id required" }, 400);
   }
+  const payload: RecognizePayload = { artwork_id: artworkId };
 
   const userClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     global: { headers: { Authorization: authHeader } },
@@ -136,7 +141,7 @@ Deno.serve(async (req) => {
 
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const base64 = base64FromBytes(bytes);
-  const mediaType = blob.type || guessMediaType(artwork.image_path);
+  const mediaType = resolveMediaType(blob.type, artwork.image_path);
 
   const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -176,12 +181,36 @@ Deno.serve(async (req) => {
     return json({ error: "openrouter failed", status: aiRes.status, detail: txt }, 502);
   }
 
-  const aiJson = await aiRes.json();
-  const text = String(aiJson?.choices?.[0]?.message?.content ?? "").trim();
+  let aiJson: unknown;
+  try {
+    aiJson = await aiRes.json();
+  } catch (e) {
+    await adminClient
+      .from("artworks")
+      .update({
+        status: "error",
+        error_message: "openrouter response was not JSON",
+      })
+      .eq("id", artwork.id);
+    return json({ error: "openrouter response parse failed", detail: String(e) }, 502);
+  }
+
+  const text = extractModelText(aiJson).trim();
+  if (!text) {
+    await adminClient
+      .from("artworks")
+      .update({
+        status: "error",
+        error_message: "model returned empty content",
+        raw_ai: jsonSafeObject({ raw_json: aiJson }),
+      })
+      .eq("id", artwork.id);
+    return json({ error: "bad AI response", detail: "empty model output" }, 502);
+  }
 
   let parsedRoot: unknown;
   try {
-    parsedRoot = JSON.parse(stripFences(text));
+    parsedRoot = JSON.parse(extractJsonCandidate(stripFences(text)));
   } catch (e) {
     await adminClient
       .from("artworks")
@@ -284,12 +313,53 @@ function guessMediaType(path: string): string {
   if (ext === "png") return "image/png";
   if (ext === "webp") return "image/webp";
   if (ext === "gif") return "image/gif";
+  if (ext === "heic") return "image/heic";
+  if (ext === "heif") return "image/heif";
   return "image/jpeg";
+}
+
+function resolveMediaType(blobType: string, path: string): string {
+  if (typeof blobType === "string" && blobType.startsWith("image/")) return blobType;
+  return guessMediaType(path);
 }
 
 function stripFences(t: string): string {
   const m = t.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   return m ? m[1] : t;
+}
+
+/** Some models return prose before/after JSON; keep the first object-looking block. */
+function extractJsonCandidate(t: string): string {
+  const trimmed = t.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) return trimmed;
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
+  return trimmed;
+}
+
+function extractModelText(ai: unknown): string {
+  if (!isJsonObject(ai)) return "";
+  const choices = ai.choices;
+  if (!Array.isArray(choices) || choices.length === 0) return "";
+  const first = choices[0];
+  if (!isJsonObject(first)) return "";
+  const message = first.message;
+  if (!isJsonObject(message)) return "";
+  const content = message.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (isJsonObject(part) && typeof part.text === "string") return part.text;
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (isJsonObject(content) && typeof content.text === "string") return content.text;
+  return "";
 }
 
 function base64FromBytes(bytes: Uint8Array): string {

@@ -45,6 +45,30 @@ function museumPath(path: string) {
   return `/museum${path}`
 }
 
+const EXTENSION_TO_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  heic: 'image/heic',
+  heif: 'image/heif',
+}
+
+function extensionFromName(name: string): string {
+  return (name.split('.').pop() || '').trim().toLowerCase()
+}
+
+function isSupportedUploadImage(file: File): boolean {
+  if (file.type.startsWith('image/')) return true
+  return Boolean(EXTENSION_TO_MIME[extensionFromName(file.name)])
+}
+
+function uploadContentTypeFor(file: File): string {
+  if (file.type.startsWith('image/')) return file.type
+  return EXTENSION_TO_MIME[extensionFromName(file.name)] || 'application/octet-stream'
+}
+
 /* -------------------- Welcome (unauthenticated home) -------------------- */
 
 function MuseumWelcome({ onNavigate }: { onNavigate: (path: string) => void }) {
@@ -572,7 +596,7 @@ function MuseumAddArtwork({
             multiple
             onChange={(e) => {
               void (async () => {
-                const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/'))
+                const files = Array.from(e.target.files || []).filter(isSupportedUploadImage)
                 e.target.value = ''
                 if (files.length === 0 || !supabase) return
                 const total = files.length
@@ -583,11 +607,11 @@ function MuseumAddArtwork({
                     const file = files[i]
                     const n = i + 1
                     setStatus(`Uploading ${n}/${total}…`)
-                    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
+                    const ext = extensionFromName(file.name) || 'jpg'
                     const path = `${userId}/${crypto.randomUUID()}.${ext}`
                     const upload = await supabase.storage
                       .from('artworks')
-                      .upload(path, file, { contentType: file.type, upsert: false })
+                      .upload(path, file, { contentType: uploadContentTypeFor(file), upsert: false })
                     if (upload.error) {
                       failures.push(`${file.name}: ${upload.error.message}`)
                       continue
