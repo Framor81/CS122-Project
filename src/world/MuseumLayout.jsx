@@ -7,12 +7,12 @@ import { FramesLayer } from './FramesLayer.jsx'
 import { debugReport } from '../lib/debugBus.js'
 
 /** Warm floor vs cooler slate walls so planes separate; walls bright enough for lighting/fog depth. */
-const FLOOR_COLOR = '#3f3834'
+const FLOOR_COLOR = '#4d4540'
 /** Alternating slate tones — corners and hall length read instead of a flat black hole. */
-const WALL_COLOR_A = '#434a56'
-const WALL_COLOR_B = '#3b414c'
+const WALL_COLOR_A = '#505868'
+const WALL_COLOR_B = '#47505c'
 /** Slightly darker than walls so the volume reads as a box. */
-const CEILING_COLOR = '#2f3238'
+const CEILING_COLOR = '#3a3e47'
 
 export function MuseumLayout({
   seed = 'museum-seed-alpha',
@@ -59,10 +59,10 @@ export function MuseumLayout({
           <boxGeometry args={f.size} />
           <meshStandardMaterial
             color={FLOOR_COLOR}
-            roughness={0.65}
+            roughness={0.62}
             metalness={0}
-            emissive="#1a1512"
-            emissiveIntensity={0.09}
+            emissive="#242019"
+            emissiveIntensity={0.11}
           />
         </mesh>
       ))}
@@ -72,10 +72,10 @@ export function MuseumLayout({
           <boxGeometry args={w.size} />
           <meshStandardMaterial
             color={idx % 2 === 0 ? WALL_COLOR_A : WALL_COLOR_B}
-            roughness={0.9}
+            roughness={0.88}
             metalness={0}
-            emissive={idx % 2 === 0 ? '#2a3038' : '#252b34'}
-            emissiveIntensity={0.055}
+            emissive={idx % 2 === 0 ? '#353d48' : '#303846'}
+            emissiveIntensity={0.075}
           />
         </mesh>
       ))}
@@ -85,10 +85,10 @@ export function MuseumLayout({
           <boxGeometry args={c.size} />
           <meshStandardMaterial
             color={CEILING_COLOR}
-            roughness={0.9}
+            roughness={0.88}
             metalness={0}
-            emissive="#22252c"
-            emissiveIntensity={0.04}
+            emissive="#2e323a"
+            emissiveIntensity={0.055}
           />
         </mesh>
       ))}

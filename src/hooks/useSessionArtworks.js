@@ -19,6 +19,24 @@ function normalizeScope(value) {
   return value === 'all' ? 'all' : 'host'
 }
 
+/** PostgREST when `artwork_scope` is missing from the DB or schema cache. */
+function missingArtworkScopeMessage() {
+  return (
+    'The database is missing the artwork_scope column on museum_sessions. ' +
+    'In Supabase → SQL Editor, run supabase/session-artwork-scope.patch.sql (or apply supabase/migrations/20260503120000_add_museum_sessions_artwork_scope.sql). ' +
+    "Then run: NOTIFY pgrst, 'reload schema'; — or wait a minute and retry."
+  )
+}
+
+function isArtworkScopeSchemaError(err) {
+  const m = (err && (err.message || err.details || err.hint)) || ''
+  return (
+    /artwork_scope/i.test(m) ||
+    /schema cache/i.test(m) ||
+    /PGRST204/i.test(m)
+  )
+}
+
 export function useSessionArtworks({ sessionCode, userId }) {
   const [loading, setLoading] = useState(Boolean(supabase && sessionCode && userId))
   const [error, setError] = useState('')
@@ -88,7 +106,9 @@ export function useSessionArtworks({ sessionCode, userId }) {
         : await query.eq('user_id', nextHost || userId)
 
     if (artworkError) {
-      const message = artworkError.message || 'Could not load session artworks.'
+      const message = isArtworkScopeSchemaError(artworkError)
+        ? missingArtworkScopeMessage()
+        : artworkError.message || 'Could not load session artworks.'
       setError(message)
       setArtworks([])
       setLoading(false)
@@ -139,16 +159,35 @@ export function useSessionArtworks({ sessionCode, userId }) {
   const setScope = useCallback(
     async (nextScopeRaw) => {
       const nextScope = normalizeScope(nextScopeRaw)
-      if (!supabase || !sessionCode || !isHost) return { error: 'Only the host can change this.' }
-      const { error: upsertError } = await supabase
+      if (!supabase || !sessionCode || !userId) {
+        return { error: 'Session is not ready.' }
+      }
+      if (!isHost) {
+        return { error: 'Only the host can change this.' }
+      }
+      // Update must match exactly one row. Supabase returns no error when 0 rows match,
+      // which would leave the DB on "host" while the UI optimistically flips—then load()
+      // would snap the dropdown back.
+      const { data, error: updateError } = await supabase
         .from('museum_sessions')
         .update({ artwork_scope: nextScope, updated_at: new Date().toISOString() })
         .eq('session_code', sessionCode)
         .eq('host_user_id', userId)
-      if (upsertError) {
-        return { error: upsertError.message || 'Failed to update artwork mode.' }
+        .select('artwork_scope')
+
+      if (updateError) {
+        if (isArtworkScopeSchemaError(updateError)) {
+          return { error: missingArtworkScopeMessage() }
+        }
+        return { error: updateError.message || 'Failed to update artwork mode.' }
       }
-      setScopeState(nextScope)
+      if (!data?.length) {
+        return {
+          error:
+            'Could not update this session. If you created the room, try refreshing; the host record may be out of sync.',
+        }
+      }
+      setScopeState(normalizeScope(data[0].artwork_scope))
       await load()
       return { error: null }
     },

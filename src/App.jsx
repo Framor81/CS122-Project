@@ -11,6 +11,7 @@ import { SessionGate } from './screens/SessionGate.jsx'
 import { SessionLobby } from './screens/SessionLobby.jsx'
 import { Museum3DLoading } from './components/Museum3DShell.jsx'
 import { PlaqueInspectOverlay } from './components/PlaqueInspectOverlay.jsx'
+import { MuseumTutorialOverlay } from './components/MuseumTutorialOverlay.jsx'
 import { UsernameSetupGate } from './screens/UsernameSetupGate.tsx'
 import { MuseumWebApp } from './screens/MuseumWebApp.tsx'
 import { useGameInput } from './hooks/useGameInput.js'
@@ -166,6 +167,7 @@ function MuseumSession({
         total={artworkReadiness.total}
         artworksLoading={sessionArtworks.loading}
       />
+      {museumReady && !combatEnabled ? <MuseumTutorialOverlay /> : null}
       {!combatEnabled ? <PlaqueInspectOverlay /> : null}
       <Canvas
         shadows
@@ -188,6 +190,7 @@ function MuseumSession({
           respawnToken={multiplayer.respawnToken}
           museumMap={museumMap}
           onRegenerateMap={onRegenerateMap}
+          canRegenerateMap={sessionArtworks.isHost}
           sessionCode={sessionCode}
           artworks={sessionArtworks.artworks}
           artworksLoading={sessionArtworks.loading}

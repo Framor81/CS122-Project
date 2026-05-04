@@ -36,10 +36,18 @@ export function useGameInput({ disabled = false } = {}) {
 
     const keyDown = (event) => {
       if (disabledRef.current) return
-      if (event.code === 'KeyW') s.forward = true
-      if (event.code === 'KeyS') s.backward = true
-      if (event.code === 'KeyA') s.left = true
-      if (event.code === 'KeyD') s.right = true
+      if (
+        event.code === 'ArrowUp' ||
+        event.code === 'ArrowDown' ||
+        event.code === 'ArrowLeft' ||
+        event.code === 'ArrowRight'
+      ) {
+        event.preventDefault()
+      }
+      if (event.code === 'KeyW' || event.code === 'ArrowUp') s.forward = true
+      if (event.code === 'KeyS' || event.code === 'ArrowDown') s.backward = true
+      if (event.code === 'KeyA' || event.code === 'ArrowLeft') s.left = true
+      if (event.code === 'KeyD' || event.code === 'ArrowRight') s.right = true
       if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') s.sprint = true
       if (event.code === 'KeyC') s.crouch = true
       // Dive (combat-only): press F.
@@ -52,10 +60,10 @@ export function useGameInput({ disabled = false } = {}) {
 
     const keyUp = (event) => {
       if (disabledRef.current) return
-      if (event.code === 'KeyW') s.forward = false
-      if (event.code === 'KeyS') s.backward = false
-      if (event.code === 'KeyA') s.left = false
-      if (event.code === 'KeyD') s.right = false
+      if (event.code === 'KeyW' || event.code === 'ArrowUp') s.forward = false
+      if (event.code === 'KeyS' || event.code === 'ArrowDown') s.backward = false
+      if (event.code === 'KeyA' || event.code === 'ArrowLeft') s.left = false
+      if (event.code === 'KeyD' || event.code === 'ArrowRight') s.right = false
       if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') s.sprint = false
       if (event.code === 'KeyC') s.crouch = false
       if (event.code === 'KeyF') s.dive = false

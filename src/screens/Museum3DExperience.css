@@ -449,6 +449,13 @@
   cursor: pointer;
 }
 
+.m3d-gallery-scope-error {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #e8a598;
+}
+
 .m3d-gallery-guest-note {
   margin: 0 0 12px;
   font-size: 0.8rem;

@@ -101,20 +101,32 @@ export function useSharedMuseumMap(userId, sessionCode) {
 
   const regenerateMap = useCallback(async () => {
     const nextMap = makeRandomMap()
-    setMuseumMap(nextMap)
-    if (!supabase || !userId || !sessionCode) return
+    if (!supabase || !userId || !sessionCode) {
+      setMuseumMap(nextMap)
+      return
+    }
 
-    await supabase.from('museum_sessions').upsert(
-      {
-        session_code: sessionCode,
+    // Only the session host may publish a new map. Upserting with host_user_id would let any
+    // guest overwrite the row and steal host (breaking the host’s lobby controls).
+    const { data, error } = await supabase
+      .from('museum_sessions')
+      .update({
         seed_text: nextMap.seedText,
         grid_size: nextMap.gridSize,
-        host_user_id: userId,
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'session_code' },
-    )
-    await saveUserMapSlot(nextMap)
+      })
+      .eq('session_code', sessionCode)
+      .eq('host_user_id', userId)
+      .select('seed_text,grid_size')
+
+    if (error || !data?.[0]) return
+
+    const published = normalizeMap({
+      seedText: data[0].seed_text,
+      gridSize: data[0].grid_size,
+    })
+    setMuseumMap(published)
+    await saveUserMapSlot(published)
   }, [saveUserMapSlot, sessionCode, userId])
 
   return useMemo(

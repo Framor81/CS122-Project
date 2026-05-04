@@ -1,8 +1,6 @@
--- Shared session artwork mode (host vs everyone’s collection).
--- Run the full file in the Supabase Dashboard → SQL Editor, then press Run.
--- If the API still says "schema cache", the NOTIFY at the end refreshes PostgREST.
+-- Host-controlled museum collection scope + policies for cross-account reads.
+-- Idempotent: safe to run more than once.
 
--- 1) Add host-controlled artwork scope to session metadata.
 alter table public.museum_sessions
   add column if not exists artwork_scope text not null default 'host';
 
@@ -23,21 +21,16 @@ update public.museum_sessions
 set artwork_scope = 'host'
 where artwork_scope is null;
 
--- 2) Allow authenticated users to read artworks across accounts
---    (required when host selects "all accounts").
 drop policy if exists "authenticated users read all artworks" on public.artworks;
 create policy "authenticated users read all artworks"
   on public.artworks for select
   to authenticated
   using (true);
 
--- 3) Allow authenticated users to read images in the artworks bucket
---    so signed URLs can be created for cross-account artwork rows.
 drop policy if exists "authenticated users read all art images" on storage.objects;
 create policy "authenticated users read all art images"
   on storage.objects for select
   to authenticated
   using (bucket_id = 'artworks');
 
--- Refresh PostgREST so REST/API sees new columns immediately (safe no-op if unsupported).
 notify pgrst, 'reload schema';

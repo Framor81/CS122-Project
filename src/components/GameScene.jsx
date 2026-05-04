@@ -7,14 +7,15 @@ import { PlaqueTargetsProvider } from '../world/PlaqueTargetsProvider.jsx'
 import { Player } from './Player.jsx'
 import { RemotePlayers } from './RemotePlayers.jsx'
 import { MuseumLayout } from '../world/MuseumLayout.jsx'
+import { SpawnFloorHint } from '../world/SpawnFloorHint.jsx'
 import { generateMuseumGrid } from '../world/generateMuseumGrid.js'
 import { meshFromGrid } from '../world/meshFromGrid.js'
 import { estimatePlaceableArtworkCount } from '../world/generateFramePlacements.js'
 import { prepareGalleryArtworks } from '../world/prepareGalleryArtworks.js'
 
-const BG = '#0a0a0a'
+const BG = '#121212'
 /** Exterior ground — match interior floor read under fog. */
-const GROUND = '#3f3834'
+const GROUND = '#4a423d'
 
 export function GameScene({
   displayName,
@@ -32,6 +33,7 @@ export function GameScene({
   respawnToken,
   museumMap,
   onRegenerateMap,
+  canRegenerateMap = true,
   sessionCode = '',
   artworks = null,
   artworksLoading = false,
@@ -76,15 +78,16 @@ export function GameScene({
     wallMeshParams,
   ])
 
-  // Press `P` to generate and publish a brand new shared map.
+  // Press `P` to generate and publish a brand new shared map (host only — guests must not overwrite DB).
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.code !== 'KeyP') return
+      if (!canRegenerateMap) return
       onRegenerateMap?.()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onRegenerateMap])
+  }, [canRegenerateMap, onRegenerateMap])
   const worldGenToken = `${museumSeedText}:${museumGridSize}`
   const localPlayerStateRef = useRef({ x: 0, y: 0, z: 0, yaw: 0 })
   const handleLocalTransform = useCallback(
@@ -112,7 +115,7 @@ export function GameScene({
         args={
           combatEnabled
             ? [BG, 5, 20]
-            : ['#101010', 18, 110]
+            : ['#1a1a1a', 22, 118]
         }
       />
 
@@ -123,33 +126,33 @@ export function GameScene({
         </>
       ) : (
         <>
-          <ambientLight intensity={0.52} color="#ebe9e6" />
+          <ambientLight intensity={0.66} color="#f2f0ed" />
           <hemisphereLight
-            color="#4a4844"
-            groundColor="#2a2622"
-            intensity={0.38}
+            color="#5c5854"
+            groundColor="#34302c"
+            intensity={0.48}
           />
           <directionalLight
             position={[2, 12, 8]}
-            intensity={0.55}
+            intensity={0.72}
             color="#faf8f4"
           />
           <directionalLight
             position={[-8, 5, -6]}
-            intensity={0.28}
-            color="#c4beb6"
+            intensity={0.38}
+            color="#d8d2ca"
           />
           <directionalLight
             position={[5, 2, -10]}
-            intensity={0.14}
-            color="#8a8580"
+            intensity={0.22}
+            color="#9c9690"
           />
         </>
       )}
 
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[groundSize, groundSize]} />
-        <meshStandardMaterial color={GROUND} roughness={0.6} />
+        <meshStandardMaterial color={GROUND} roughness={0.58} />
       </mesh>
       <PlaqueTargetsProvider>
         <MuseumLayout
@@ -161,6 +164,11 @@ export function GameScene({
         />
         <PlaqueInspectBridge chatOpen={chatOpen} combatEnabled={combatEnabled} />
       </PlaqueTargetsProvider>
+      <SpawnFloorHint
+        spawn={museum?.meta?.entrance?.spawnWorld}
+        combatEnabled={combatEnabled}
+        floorThickness={museum?.meta?.floorThickness ?? wallMeshParams.floorThickness}
+      />
       <RemotePlayers players={remotePlayers} localId={localId} />
       {combatEnabled ? (
         <CombatLayer

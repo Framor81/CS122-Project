@@ -20,6 +20,7 @@ export function SessionLobby({
   const multiplayer = useMultiplayer(displayName, sessionCode)
   const [copied, setCopied] = useState(false)
   const [scopeSaving, setScopeSaving] = useState(false)
+  const [scopeActionError, setScopeActionError] = useState('')
 
   const capacity = useMemo(() => {
     const m = museumMap
@@ -91,14 +92,25 @@ export function SessionLobby({
                       value={sessionArtworks.scope}
                       disabled={scopeSaving}
                       onChange={async (e) => {
+                        const next = e.target.value
+                        setScopeActionError('')
                         setScopeSaving(true)
-                        await sessionArtworks.setScope(e.target.value)
-                        setScopeSaving(false)
+                        try {
+                          const result = await sessionArtworks.setScope(next)
+                          if (result?.error) setScopeActionError(result.error)
+                        } finally {
+                          setScopeSaving(false)
+                        }
                       }}
                     >
                       <option value="host">My uploads only</option>
                       <option value="all">Everyone’s uploads</option>
                     </select>
+                    {scopeActionError ? (
+                      <p className="m3d-gallery-scope-error" role="alert">
+                        {scopeActionError}
+                      </p>
+                    ) : null}
                   </label>
                 ) : (
                   <p className="m3d-gallery-guest-note">
