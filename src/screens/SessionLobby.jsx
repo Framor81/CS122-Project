@@ -57,6 +57,7 @@ export function SessionLobby({
   }, [sessionCode])
 
   const enterDisabled = sessionArtworks.loading
+  const hostModeValue = multiplayer.favoritesRoundActive ? 'favorites' : sessionArtworks.scope
 
   const copyLink = async () => {
     try {
@@ -101,41 +102,39 @@ export function SessionLobby({
               <div className="m3d-gallery-panel">
                 {sessionArtworks.isHost ? (
                   <>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={multiplayer.favoritesRoundActive}
-                      className={`m3d-favorites-toggle-btn${multiplayer.favoritesRoundActive ? ' is-on' : ''}`}
-                      disabled={multiplayer.status !== 'connected'}
-                      title={
-                        multiplayer.status !== 'connected'
-                          ? 'Connect to the session server to use this (check multiplayer is running).'
-                          : undefined
-                      }
-                      onClick={() => {
-                        if (multiplayer.favoritesRoundActive) {
-                          multiplayer.cancelFavoritesRound()
-                        } else {
-                          multiplayer.startFavoritesRound()
-                        }
-                      }}
-                    >
-                      <span className="m3d-favorites-toggle-track" aria-hidden />
-                      <span className="m3d-favorites-toggle-label">Select up to 5 favorites each</span>
-                    </button>
                     <label className="m3d-gallery-scope">
-                      <span className="m3d-gallery-scope-label">Museum collection</span>
+                      <span className="m3d-gallery-scope-label">Museum mode</span>
                       <select
                         className="m3d-gallery-select"
-                        value={sessionArtworks.scope}
+                        value={hostModeValue}
                         disabled={scopeSaving}
                         onChange={async (e) => {
                           const next = e.target.value
                           setScopeActionError('')
                           setScopeSaving(true)
                           try {
-                            const result = await sessionArtworks.setScope(next)
-                            if (result?.error) setScopeActionError(result.error)
+                            if (next === 'favorites') {
+                              if (sessionArtworks.scope !== 'all') {
+                                const result = await sessionArtworks.setScope('all')
+                                if (result?.error) {
+                                  setScopeActionError(result.error)
+                                  return
+                                }
+                              }
+                              if (multiplayer.status !== 'connected') {
+                                setScopeActionError(
+                                  'Connect to the session server to use favorites mode (check multiplayer is running).',
+                                )
+                                return
+                              }
+                              multiplayer.startFavoritesRound()
+                            } else {
+                              if (multiplayer.favoritesRoundActive) {
+                                multiplayer.cancelFavoritesRound()
+                              }
+                              const result = await sessionArtworks.setScope(next)
+                              if (result?.error) setScopeActionError(result.error)
+                            }
                           } finally {
                             setScopeSaving(false)
                           }
@@ -143,6 +142,7 @@ export function SessionLobby({
                       >
                         <option value="host">My uploads only</option>
                         <option value="all">Everyone in this session</option>
+                        <option value="favorites">Select up to 5 favorites each</option>
                       </select>
                       {scopeActionError ? (
                         <p className="m3d-gallery-scope-error" role="alert">
