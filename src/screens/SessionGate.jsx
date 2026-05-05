@@ -3,9 +3,9 @@ import { Museum3DShell } from '../components/Museum3DShell.jsx'
 import { supabase } from '../lib/supabaseClient.js'
 
 function makeSessionCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
   let out = ''
-  for (let i = 0; i < 6; i += 1) {
+  for (let i = 0; i < 4; i += 1) {
     out += chars[Math.floor(Math.random() * chars.length)]
   }
   return out
@@ -27,7 +27,7 @@ export function SessionGate({
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const normalizedJoin = useMemo(
-    () => joinCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12),
+    () => joinCode.trim().toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4),
     [joinCode],
   )
 
@@ -41,17 +41,29 @@ export function SessionGate({
       }
       setErrorText('')
       setIsSubmitting(true)
-      const sessionCode = makeSessionCode()
-      const { error } = await supabase.from('museum_sessions').upsert(
-        {
+      let sessionCode = ''
+      let error = null
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        sessionCode = makeSessionCode()
+        const res = await supabase.from('museum_sessions').insert({
           session_code: sessionCode,
           seed_text: DEFAULT_MAP.seedText,
           grid_size: DEFAULT_MAP.gridSize,
           host_user_id: userId,
           updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'session_code' },
-      )
+        })
+        if (!res.error) {
+          error = null
+          break
+        }
+        // Unique conflict (code already taken): retry a new 4-char code.
+        if (res.error.code === '23505') {
+          error = res.error
+          continue
+        }
+        error = res.error
+        break
+      }
       if (cancelled) return
       setIsSubmitting(false)
       if (error) {
@@ -139,16 +151,22 @@ export function SessionGate({
             setJoinCode(e.target.value)
             setErrorText('')
           }}
-          placeholder="ABC123"
+          placeholder="ABCD"
+          maxLength={4}
           autoComplete="off"
           onKeyDown={async (e) => {
-            if (e.key !== 'Enter' || !normalizedJoin || isSubmitting) return
+            if (e.key !== 'Enter' || normalizedJoin.length !== 4 || isSubmitting) return
             e.preventDefault()
             await tryJoin()
           }}
         />
         {errorText ? <p className="m3d-card__error">{errorText}</p> : null}
-        <button type="button" className="m3d-card__btn" disabled={!normalizedJoin || isSubmitting} onClick={tryJoin}>
+        <button
+          type="button"
+          className="m3d-card__btn"
+          disabled={normalizedJoin.length !== 4 || isSubmitting}
+          onClick={tryJoin}
+        >
           {isSubmitting ? 'Checking…' : 'Enter session lobby →'}
         </button>
         <button

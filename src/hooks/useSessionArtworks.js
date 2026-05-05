@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient.js'
 import { debugReport } from '../lib/debugBus.js'
 
@@ -37,12 +37,19 @@ function isArtworkScopeSchemaError(err) {
   )
 }
 
-export function useSessionArtworks({ sessionCode, userId }) {
+export function useSessionArtworks({
+  sessionCode,
+  userId,
+  connectedUserIds = null,
+  onHostUserIdResolved,
+} = {}) {
   const [loading, setLoading] = useState(Boolean(supabase && sessionCode && userId))
   const [error, setError] = useState('')
   const [artworks, setArtworks] = useState([])
   const [scope, setScopeState] = useState('host')
   const [hostUserId, setHostUserId] = useState('')
+  const hostResolvedCbRef = useRef(onHostUserIdResolved)
+  hostResolvedCbRef.current = onHostUserIdResolved
 
   const isHost = Boolean(userId && hostUserId && userId === hostUserId)
 
@@ -91,6 +98,23 @@ export function useSessionArtworks({ sessionCode, userId }) {
     setHostUserId(nextHost)
     setScopeState(nextScope)
 
+    if (nextHost && typeof hostResolvedCbRef.current === 'function') {
+      hostResolvedCbRef.current(nextHost)
+    }
+
+    const fromPresence =
+      Array.isArray(connectedUserIds) && connectedUserIds.length > 0
+        ? [...new Set(connectedUserIds.map((x) => String(x ?? '').trim()).filter(Boolean))]
+        : []
+    const fallbackIds = [
+      ...new Set(
+        [nextHost || '', userId || '']
+          .map((x) => String(x ?? '').trim())
+          .filter(Boolean),
+      ),
+    ]
+    const poolUserIdsForAllScope = fromPresence.length > 0 ? fromPresence : fallbackIds
+
     const query = supabase
       .from('artworks')
       .select(
@@ -102,7 +126,7 @@ export function useSessionArtworks({ sessionCode, userId }) {
 
     const { data: rows, error: artworkError } =
       nextScope === 'all'
-        ? await query
+        ? await query.in('user_id', poolUserIdsForAllScope)
         : await query.eq('user_id', nextHost || userId)
 
     if (artworkError) {
@@ -122,7 +146,7 @@ export function useSessionArtworks({ sessionCode, userId }) {
       .sort((a, b) => String(a.id).localeCompare(String(b.id)))
     setArtworks(final)
     setLoading(false)
-  }, [sessionCode, userId])
+  }, [sessionCode, userId, connectedUserIds])
 
   useEffect(() => {
     queueMicrotask(() => {

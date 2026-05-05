@@ -96,7 +96,6 @@ function MuseumWelcome({ onNavigate }: { onNavigate: (path: string) => void }) {
       </nav>
 
       <section className="hero">
-        <p className="eyebrow">Welcome</p>
         <h1>
           Welcome to Your <span className="accent">Personal Museum!</span>
         </h1>
@@ -298,54 +297,103 @@ function MuseumHome({
       />
 
       <section className="hero">
-        <p className="eyebrow">Welcome</p>
         <h1>
-          Welcome to Your <span className="accent">Personal Museum</span>, {displayName}!
+          Welcome to Your <span className="accent">Personal Museum</span>
+          {displayName ? `, ${displayName}` : ''}!
         </h1>
-        <p className="explore-label">EXPLORE</p>
+        <p className="hero-lead">
+          Begin by adding artworks to your collection. Once you have saved works, you can explore them in your 3D
+          museum.
+        </p>
       </section>
 
-      <section className="card-grid">
-        <a
-          className="prototype-link"
-          href={museumPath('/collection')}
-          onClick={(e) => {
-            e.preventDefault()
-            onNavigate('/collection')
-          }}
+      <section className="home-flow" aria-labelledby="home-flow-heading">
+        <p id="home-flow-heading" className="home-flow-heading">
+          How it works
+        </p>
+
+        <div
+          className={`home-flow-progress${canEnter3D ? ' home-flow-progress--step2' : ''}`}
+          aria-hidden="true"
         >
-          <article className="feature-card">
-            <span className="card-kicker">Curated</span>
-            <h2>Your Collection</h2>
-            <p>Browse and revisit every artwork you've discovered.</p>
-            <span className="card-action">ENTER →</span>
-          </article>
-        </a>
-        <a
-          className={`prototype-link ${!canEnter3D ? 'is-disabled' : ''}`}
-          href="#"
-          onClick={(e) => {
-            e.preventDefault()
-            if (!canEnter3D) {
-              onNavigate('/add-artwork')
-              return
-            }
-            onNavigate3D()
-          }}
-        >
-          <article className="feature-card">
-            <span className="card-kicker">Immersive Experience</span>
-            <h2>3D Museum</h2>
-            <p>
-              {canEnter3D
-                ? 'Walk through a virtual gallery of your saved works.'
-                : 'Upload artwork first so your museum has something to show.'}
-            </p>
-            <span className="card-action">
-              {museumEntryLoading ? 'CHECKING COLLECTION...' : canEnter3D ? 'ENTER ->' : 'UPLOAD IMAGES ->'}
-            </span>
-          </article>
-        </a>
+          <span className={`home-flow-dot ${canEnter3D ? 'is-complete' : 'is-current'}`}>1</span>
+          <span className="home-flow-line" />
+          <span className={`home-flow-dot ${canEnter3D ? 'is-current' : ''}`}>2</span>
+        </div>
+
+        <div className="home-flow-grid">
+          <button
+            type="button"
+            className="home-flow-card home-flow-card--step1 home-flow-card--clickable"
+            onClick={() => onNavigate('/collection')}
+          >
+            <p className="home-flow-step-label">Step 1</p>
+            <h2 className="home-flow-title">Build Your Collection</h2>
+            <p className="home-flow-desc">Save and organize artworks you discover.</p>
+            <div className="home-flow-icon home-flow-icon--collection" aria-hidden="true">
+              <svg viewBox="0 0 64 64" width="56" height="56" fill="none">
+                <rect x="10" y="14" width="44" height="36" rx="2" stroke="currentColor" strokeWidth="2" />
+                <circle cx="24" cy="28" r="6" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M14 42 L28 30 L38 38 L50 26" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <circle cx="48" cy="46" r="10" fill="#111" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M48 42 V50 M44 46 H52" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </div>
+            <p className="home-flow-card-foot">Start Collecting →</p>
+          </button>
+
+          {canEnter3D ? (
+            <button
+              type="button"
+              className="home-flow-card home-flow-card--step2 home-flow-card--clickable is-unlocked"
+              disabled={museumEntryLoading}
+              onClick={() => onNavigate3D()}
+            >
+              <p className="home-flow-step-label">Step 2</p>
+              <h2 className="home-flow-title">Explore Your 3D Museum</h2>
+              <p className="home-flow-desc">Walk through a virtual gallery created from your saved works.</p>
+              <div className="home-flow-icon home-flow-icon--museum" aria-hidden="true">
+                <svg viewBox="0 0 64 64" width="56" height="56" fill="none">
+                  <path d="M32 8 L54 22 V52 H10 V22 Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                  <path d="M18 52 V34 H26 V52 M38 52 V34 H46 V52" stroke="currentColor" strokeWidth="2" />
+                  <path d="M10 52 H54" stroke="currentColor" strokeWidth="2" />
+                  <rect x="27" y="26" width="10" height="8" stroke="currentColor" strokeWidth="1.5" />
+                </svg>
+              </div>
+              <p className="home-flow-card-foot">
+                {museumEntryLoading ? 'Opening…' : 'Enter 3D Museum →'}
+              </p>
+            </button>
+          ) : (
+            <div className="home-flow-card home-flow-card--step2 is-locked" role="region" aria-label="Step 2 — locked">
+              <p className="home-flow-step-label">Step 2</p>
+              <h2 className="home-flow-title">Explore Your 3D Museum</h2>
+              <p className="home-flow-desc">Walk through a virtual gallery created from your saved works.</p>
+              <div className="home-flow-icon home-flow-icon--museum" aria-hidden="true">
+                <svg viewBox="0 0 64 64" width="56" height="56" fill="none">
+                  <path d="M32 8 L54 22 V52 H10 V22 Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                  <path d="M18 52 V34 H26 V52 M38 52 V34 H46 V52" stroke="currentColor" strokeWidth="2" />
+                  <path d="M10 52 H54" stroke="currentColor" strokeWidth="2" />
+                  <rect x="27" y="26" width="10" height="8" stroke="currentColor" strokeWidth="1.5" />
+                </svg>
+              </div>
+              <div className="home-flow-lock-panel">
+                <p className="home-flow-lock-text">
+                  <span className="home-flow-lock-icon" aria-hidden="true">
+                    🔒
+                  </span>{' '}
+                  Add artworks to your collection first. Once you have saved works, this will be available.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {!canEnter3D ? (
+          <p className="home-flow-footer-hint">
+            <span aria-hidden="true">✨</span> Add artworks to unlock your 3D museum.
+          </p>
+        ) : null}
       </section>
     </div>
   )
@@ -486,20 +534,29 @@ function MuseumCollection({
             <p className="eyebrow">Your Collection</p>
             <h1>All Works</h1>
           </div>
-          {typedArtworks.length > 0 && hasSupabaseConfig ? (
+          {hasSupabaseConfig ? (
             <div className="collection-head-actions">
               <button
                 type="button"
-                className="btn"
-                disabled={reanalyzeBusy || loading || !supabase}
-                onClick={() => {
-                  void reanalyzeCollection()
-                }}
+                className="btn btn-primary"
+                onClick={() => onNavigate('/add-artwork')}
               >
-                {reanalyzeBusy && reanalyzeProgress
-                  ? `Refreshing tags… (${reanalyzeProgress.current}/${reanalyzeProgress.total})`
-                  : 'Refresh tags'}
+                + Add artwork
               </button>
+              {typedArtworks.length > 0 ? (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={reanalyzeBusy || loading || !supabase}
+                  onClick={() => {
+                    void reanalyzeCollection()
+                  }}
+                >
+                  {reanalyzeBusy && reanalyzeProgress
+                    ? `Refreshing tags… (${reanalyzeProgress.current}/${reanalyzeProgress.total})`
+                    : 'Refresh tags'}
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>

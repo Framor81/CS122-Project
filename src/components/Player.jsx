@@ -714,7 +714,7 @@ export function Player({
       position={[spawn?.x ?? 0, groundTopYStand, spawn?.z ?? 6]}
     >
       <group ref={capsuleVisualGroupRef}>
-        <mesh castShadow>
+        <mesh castShadow={false}>
           <capsuleGeometry args={[0.4, 1.0, 8, 16]} />
           <meshStandardMaterial
             color={capsuleColor}

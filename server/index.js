@@ -28,18 +28,59 @@ const DEFAULT_SESSION = 'PUBLIC'
  * }>} */
 const players = Object.create(null)
 const socketSession = Object.create(null)
-const sessionHostByCode = Object.create(null)
+const socketUserId = Object.create(null)
+const sessionFirstSocket = Object.create(null)
+const sessionHostUserId = Object.create(null)
+const sessionMuseumLive = Object.create(null)
+const sessionFavoritesRoundActive = Object.create(null)
+/** @type {Record<string, Record<string, string[]>>} */
+const sessionFavoritesPicks = Object.create(null)
+
+const MAX_FAVORITE_PICKS = 5
 
 function sanitizeSessionCode(raw) {
   if (typeof raw !== 'string') return DEFAULT_SESSION
-  const code = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-  return code.length > 0 ? code.slice(0, 12) : DEFAULT_SESSION
+  const code = raw.trim().toUpperCase().replace(/[^A-Z]/g, '')
+  return code.length > 0 ? code.slice(0, 4) : DEFAULT_SESSION
 }
 
 function sanitizeName(raw) {
   if (typeof raw !== 'string') return 'Visitor'
   const trimmed = raw.trim().slice(0, 24)
   return trimmed.length > 0 ? trimmed : 'Visitor'
+}
+
+function sanitizeUserId(raw) {
+  if (typeof raw !== 'string') return ''
+  const t = raw.trim()
+  return t.length > 0 ? t.slice(0, 128) : ''
+}
+
+function clearSessionRoom(sessionCode) {
+  delete sessionFirstSocket[sessionCode]
+  delete sessionHostUserId[sessionCode]
+  delete sessionMuseumLive[sessionCode]
+  delete sessionFavoritesRoundActive[sessionCode]
+  delete sessionFavoritesPicks[sessionCode]
+}
+
+function getSessionHostUserId(sessionCode) {
+  return sessionHostUserId[sessionCode] || ''
+}
+
+function getConnectedUserIds(sessionCode) {
+  const set = new Set()
+  for (const sid of Object.keys(players)) {
+    if (socketSession[sid] !== sessionCode) continue
+    const u = socketUserId[sid]
+    if (u) set.add(u)
+  }
+  return [...set].sort()
+}
+
+function broadcastSessionPresence(io, sessionCode) {
+  const userIds = getConnectedUserIds(sessionCode)
+  io.to(sessionCode).emit('sessionPresence', { userIds })
 }
 
 const httpServer = createServer()
@@ -63,10 +104,18 @@ io.on('connection', (socket) => {
     if (players[id]) return
     const name = sanitizeName(payload?.name)
     const sessionCode = sanitizeSessionCode(payload?.sessionCode)
+    const userId = sanitizeUserId(payload?.userId)
+    const hostUserId = sanitizeUserId(payload?.hostUserId)
+    const inMuseum = Boolean(payload?.inMuseum)
+
     socketSession[id] = sessionCode
+    socketUserId[id] = userId
     socket.join(sessionCode)
-    if (!sessionHostByCode[sessionCode]) {
-      sessionHostByCode[sessionCode] = id
+    if (!sessionFirstSocket[sessionCode]) {
+      sessionFirstSocket[sessionCode] = id
+    }
+    if (hostUserId) {
+      sessionHostUserId[sessionCode] = hostUserId
     }
     players[id] = {
       ...DEFAULT_SPAWN,
@@ -78,21 +127,92 @@ io.on('connection', (socket) => {
       respawnAt: 0,
     }
 
+    const hid = sessionHostUserId[sessionCode] || ''
+    const isDbHost = Boolean(userId && hid && userId === hid)
+    if (inMuseum && (isDbHost || !hid)) {
+      sessionMuseumLive[sessionCode] = true
+      io.to(sessionCode).emit('museumSessionLive', { live: true })
+    }
+
     const roomPlayers = Object.fromEntries(
       Object.entries(players).filter(([sid]) => socketSession[sid] === sessionCode),
     )
+
+    const legacyHostSocket = sessionFirstSocket[sessionCode] || null
+    const connectedUserIds = getConnectedUserIds(sessionCode)
 
     socket.emit('welcome', {
       id,
       players: roomPlayers,
       sessionCode,
-      hostId: sessionHostByCode[sessionCode] || null,
+      hostId: legacyHostSocket,
+      museumSessionLive: Boolean(sessionMuseumLive[sessionCode]),
+      favoritesRoundActive: Boolean(sessionFavoritesRoundActive[sessionCode]),
+      favoritesPicks: sessionFavoritesPicks[sessionCode]
+        ? { ...sessionFavoritesPicks[sessionCode] }
+        : {},
+      connectedUserIds,
     })
 
     socket.to(sessionCode).emit('playerJoined', { id, ...players[id] })
+    broadcastSessionPresence(io, sessionCode)
   }
 
   socket.once('join', onJoin)
+
+  socket.on('favoritesStartRound', () => {
+    const sessionCode = socketSession[id] || DEFAULT_SESSION
+    const uid = socketUserId[id] || ''
+    const hid = getSessionHostUserId(sessionCode)
+    if (hid) {
+      if (uid !== hid) return
+    } else if (sessionFirstSocket[sessionCode] !== id) {
+      return
+    }
+    sessionFavoritesRoundActive[sessionCode] = true
+    sessionFavoritesPicks[sessionCode] = Object.create(null)
+    io.to(sessionCode).emit('favoritesRound', {
+      active: true,
+      picks: { ...sessionFavoritesPicks[sessionCode] },
+    })
+  })
+
+  socket.on('favoritesCancelRound', () => {
+    const sessionCode = socketSession[id] || DEFAULT_SESSION
+    const uid = socketUserId[id] || ''
+    const hid = getSessionHostUserId(sessionCode)
+    if (hid) {
+      if (uid !== hid) return
+    } else if (sessionFirstSocket[sessionCode] !== id) {
+      return
+    }
+    sessionFavoritesRoundActive[sessionCode] = false
+    delete sessionFavoritesPicks[sessionCode]
+    io.to(sessionCode).emit('favoritesRound', {
+      active: false,
+      picks: {},
+    })
+  })
+
+  socket.on('favoritesSubmitPicks', (payload) => {
+    const sessionCode = socketSession[id] || DEFAULT_SESSION
+    if (!sessionFavoritesRoundActive[sessionCode]) return
+    const uid = socketUserId[id] || ''
+    const submittedUser = sanitizeUserId(payload?.userId)
+    if (!uid || !submittedUser || uid !== submittedUser) return
+    const raw = payload?.artworkIds
+    if (!Array.isArray(raw) || raw.length > MAX_FAVORITE_PICKS) return
+    const ids = raw
+      .map((x) => (x == null ? '' : String(x).trim()))
+      .filter(Boolean)
+      .slice(0, MAX_FAVORITE_PICKS)
+    if (!sessionFavoritesPicks[sessionCode]) {
+      sessionFavoritesPicks[sessionCode] = Object.create(null)
+    }
+    sessionFavoritesPicks[sessionCode][uid] = ids
+    const merged = { ...sessionFavoritesPicks[sessionCode] }
+    io.to(sessionCode).emit('favoritesPicksSync', { picks: merged })
+  })
 
   socket.on('transform', (data) => {
     const p = players[id]
@@ -174,11 +294,33 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     const sessionCode = socketSession[id] || DEFAULT_SESSION
-    const wasHost = sessionHostByCode[sessionCode] === id
+    const hid = sessionHostUserId[sessionCode] || ''
+    const uid = socketUserId[id] || ''
+
+    let otherHostTabs = 0
+    if (hid) {
+      otherHostTabs = Object.keys(players).filter(
+        (sid) => sid !== id && socketSession[sid] === sessionCode && socketUserId[sid] === hid,
+      ).length
+    }
+
+    const legacyHostSocket = sessionFirstSocket[sessionCode]
+    const isHostSocket =
+      (hid && uid === hid) || (!hid && legacyHostSocket === id)
+
     delete players[id]
     delete socketSession[id]
-    if (!wasHost) {
+    delete socketUserId[id]
+
+    if (isHostSocket && otherHostTabs > 0) {
       io.to(sessionCode).emit('playerLeft', id)
+      broadcastSessionPresence(io, sessionCode)
+      return
+    }
+
+    if (!isHostSocket) {
+      io.to(sessionCode).emit('playerLeft', id)
+      broadcastSessionPresence(io, sessionCode)
       return
     }
 
@@ -192,11 +334,12 @@ io.on('connection', (socket) => {
       if (socketSession[sid] !== sessionCode) return
       delete players[sid]
       delete socketSession[sid]
+      delete socketUserId[sid]
       const memberSocket = io.sockets.sockets.get(sid)
       if (memberSocket) memberSocket.leave(sessionCode)
     })
 
-    delete sessionHostByCode[sessionCode]
+    clearSessionRoom(sessionCode)
   })
 })
 

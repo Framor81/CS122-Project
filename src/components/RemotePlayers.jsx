@@ -11,7 +11,7 @@ function RemotePlayerEntity({ id, p, localId }) {
   return (
     <group position={[p.x, p.y, p.z]}>
       <group rotation={[0, p.yaw, 0]}>
-        <mesh castShadow>
+        <mesh castShadow={false}>
           <capsuleGeometry args={[0.4, 1.0, 8, 16]} />
           <meshStandardMaterial
             color={color}

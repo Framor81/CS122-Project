@@ -2,17 +2,17 @@ import { Text } from '@react-three/drei'
 import { useEffect, useMemo } from 'react'
 import { generateMuseumGrid } from './generateMuseumGrid.js'
 import { meshFromGrid } from './meshFromGrid.js'
-import { CeilingLightsLayer } from './CeilingLightsLayer.jsx'
 import { FramesLayer } from './FramesLayer.jsx'
 import { debugReport } from '../lib/debugBus.js'
 
-/** Warm floor vs cooler slate walls so planes separate; walls bright enough for lighting/fog depth. */
-const FLOOR_COLOR = '#4d4540'
-/** Alternating slate tones — corners and hall length read instead of a flat black hole. */
-const WALL_COLOR_A = '#505868'
-const WALL_COLOR_B = '#47505c'
-/** Slightly darker than walls so the volume reads as a box. */
+/** Warm floor — lifted for a brighter gallery read. */
+const FLOOR_COLOR = '#5e544a'
+/** Alternating slate walls — lighter cool tones (still distinct from ceiling). */
+const WALL_COLOR_A = '#6b7688'
+const WALL_COLOR_B = '#5d6574'
+/** Dark blue-gray slab overhead — darker + cooler than the lighter slate walls. */
 const CEILING_COLOR = '#3a3e47'
+const CEILING_EMISSIVE = '#2e3440'
 
 export function MuseumLayout({
   seed = 'museum-seed-alpha',
@@ -55,45 +55,43 @@ export function MuseumLayout({
   return (
     <group>
       {mesh.floors.map((f, idx) => (
-        <mesh key={`f-${idx}`} position={f.center} receiveShadow>
+        <mesh key={`f-${idx}`} position={f.center}>
           <boxGeometry args={f.size} />
           <meshStandardMaterial
             color={FLOOR_COLOR}
-            roughness={0.62}
+            roughness={0.58}
             metalness={0}
-            emissive="#242019"
-            emissiveIntensity={0.11}
+            emissive="#3a332c"
+            emissiveIntensity={0.2}
           />
         </mesh>
       ))}
 
       {mesh.walls.map((w, idx) => (
-        <mesh key={`w-${idx}`} position={w.center} castShadow>
+        <mesh key={`w-${idx}`} position={w.center}>
           <boxGeometry args={w.size} />
           <meshStandardMaterial
             color={idx % 2 === 0 ? WALL_COLOR_A : WALL_COLOR_B}
-            roughness={0.88}
+            roughness={0.82}
             metalness={0}
-            emissive={idx % 2 === 0 ? '#353d48' : '#303846'}
-            emissiveIntensity={0.075}
+            emissive={idx % 2 === 0 ? '#4a5566' : '#424a58'}
+            emissiveIntensity={0.14}
           />
         </mesh>
       ))}
 
       {mesh.ceilings.map((c, idx) => (
-        <mesh key={`ceil-${idx}`} position={c.center} receiveShadow>
+        <mesh key={`ceil-${idx}`} position={c.center}>
           <boxGeometry args={c.size} />
           <meshStandardMaterial
             color={CEILING_COLOR}
             roughness={0.88}
             metalness={0}
-            emissive="#2e323a"
-            emissiveIntensity={0.055}
+            emissive={CEILING_EMISSIVE}
+            emissiveIntensity={0.12}
           />
         </mesh>
       ))}
-
-      <CeilingLightsLayer grid={layoutGrid} meta={usedMeta} wallParams={wallParams} />
 
       {Array.isArray(artworks) ? (
         <FramesLayer

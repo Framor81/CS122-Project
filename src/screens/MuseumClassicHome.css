@@ -212,6 +212,137 @@
   flex-direction: column;
 }
 
+/* Authenticated home: one screen, no page scroll (content flexes to fit) */
+.museum-classic.homepage-1-1 {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.museum-classic.homepage-1-1 .hero {
+  padding: 28px 20px 22px;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.museum-classic.homepage-1-1 .hero h1 {
+  font-size: clamp(42px, 8vw, 92px);
+  max-width: 18ch;
+  line-height: 1.08;
+  margin-block: 0;
+}
+
+.museum-classic.homepage-1-1 .hero .hero-lead {
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 40rem;
+  margin: 0;
+}
+
+.museum-classic.homepage-1-1 .home-flow {
+  flex: 0 0 auto;
+  min-height: auto;
+  padding: 0 16px 10px;
+  overflow: visible;
+  justify-content: flex-start;
+}
+
+.museum-classic.homepage-1-1 .home-flow-heading {
+  margin: 0 0 6px;
+  flex-shrink: 0;
+}
+
+.museum-classic.homepage-1-1 .home-flow-progress {
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.museum-classic.homepage-1-1 .home-flow-dot {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+}
+
+.museum-classic.homepage-1-1 .home-flow-line {
+  width: min(100px, 16vw);
+}
+
+.museum-classic.homepage-1-1 .home-flow-grid {
+  flex: 0 0 auto;
+  min-height: auto;
+  gap: 20px;
+  align-content: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.museum-classic.homepage-1-1 .home-flow-card {
+  min-height: 240px;
+  height: auto;
+  max-height: none;
+  padding: 12px 12px 10px;
+  overflow: visible;
+}
+
+.museum-classic.homepage-1-1 .home-flow-step-label {
+  margin: 0 0 4px;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+}
+
+.museum-classic.homepage-1-1 .home-flow-title {
+  font-size: clamp(15px, 1.8vw, 20px);
+  margin: 0 0 4px;
+  line-height: 1.15;
+}
+
+.museum-classic.homepage-1-1 .home-flow-desc {
+  font-size: 11px;
+  line-height: 1.3;
+  margin: 0 0 4px;
+}
+
+.museum-classic.homepage-1-1 .home-flow-icon {
+  margin: 2px 0 4px;
+}
+
+.museum-classic.homepage-1-1 .home-flow-icon svg {
+  width: 40px;
+  height: 40px;
+}
+
+.museum-classic.homepage-1-1 .home-flow-icon--museum svg,
+.museum-classic.homepage-1-1 .home-flow-icon--collection svg {
+  width: 56px;
+  height: 56px;
+}
+
+.museum-classic.homepage-1-1 .home-flow-card-foot {
+  padding-top: 6px;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+}
+
+.museum-classic.homepage-1-1 .home-flow-lock-text {
+  padding: 8px 10px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.museum-classic.homepage-1-1 .home-flow-footer-hint {
+  margin: 6px 0 0;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.museum-classic.homepage-1-1 .home-flow-card--clickable:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 24px rgba(212, 185, 120, 0.32),
+    0 0 48px rgba(212, 185, 120, 0.1),
+    inset 0 0 0 1px rgba(212, 185, 120, 0.18);
+}
+
 .museum-classic .hero {
   flex: 1;
   display: flex;
@@ -252,6 +383,272 @@
   font-size: 11px;
   letter-spacing: 0.45em;
   color: var(--text-dim);
+}
+
+.museum-classic .hero .hero-lead {
+  max-width: 36rem;
+  margin: 0 auto;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+/* ---------- Home flow (two-step collection → 3D) ---------- */
+.museum-classic .home-flow {
+  flex: 1;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 24px 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.museum-classic .home-flow-heading {
+  margin: 0 0 20px;
+  font-size: 10px;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.museum-classic .home-flow-progress {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 28px;
+}
+
+.museum-classic .home-flow-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dimmer);
+  border: 2px solid var(--border-2);
+  background: var(--bg);
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.museum-classic .home-flow-dot.is-current,
+.museum-classic .home-flow-dot.is-complete {
+  color: #0a0a0a;
+  border-color: var(--gold);
+  background: var(--gold);
+}
+
+.museum-classic .home-flow-dot.is-complete:not(.is-current) {
+  color: #0a0a0a;
+  opacity: 0.95;
+}
+
+.museum-classic .home-flow-line {
+  width: min(120px, 18vw);
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold), var(--border-2));
+  margin: 0 4px;
+  border-radius: 1px;
+}
+
+.museum-classic .home-flow-progress--step2 .home-flow-line {
+  background: var(--gold);
+  opacity: 0.85;
+}
+
+.museum-classic .home-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  width: 100%;
+  align-items: stretch;
+}
+
+@media (max-width: 520px) {
+  .museum-classic .home-flow-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.museum-classic .home-flow-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 28px 26px 24px;
+  min-height: 0;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  text-align: left;
+}
+
+.museum-classic button.home-flow-card {
+  appearance: none;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.museum-classic .home-flow-card--clickable {
+  cursor: pointer;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.2s ease;
+}
+
+.museum-classic .home-flow-card--clickable:hover:not(:disabled) {
+  border-color: rgba(212, 185, 120, 0.85);
+  box-shadow:
+    0 0 32px rgba(212, 185, 120, 0.38),
+    0 0 60px rgba(212, 185, 120, 0.12),
+    inset 0 0 0 1px rgba(212, 185, 120, 0.18);
+  transform: translateY(-2px);
+}
+
+.museum-classic .home-flow-card--clickable:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
+
+.museum-classic .home-flow-card--clickable:disabled {
+  opacity: 0.72;
+  cursor: wait;
+  transform: none;
+}
+
+.museum-classic .home-flow-card--clickable:disabled:hover {
+  box-shadow: none;
+  border-color: rgba(212, 185, 120, 0.55);
+}
+
+.museum-classic .home-flow-card--step1 {
+  border-color: rgba(212, 185, 120, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(212, 185, 120, 0.12);
+}
+
+.museum-classic .home-flow-card--step2.is-unlocked {
+  border-color: rgba(212, 185, 120, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(212, 185, 120, 0.12);
+}
+
+.museum-classic .home-flow-card--step2.is-locked {
+  opacity: 0.92;
+  border-color: var(--border);
+  background: rgba(17, 17, 17, 0.85);
+}
+
+.museum-classic .home-flow-card--step2.is-locked .home-flow-title,
+.museum-classic .home-flow-card--step2.is-locked .home-flow-desc,
+.museum-classic .home-flow-card--step2.is-locked .home-flow-step-label {
+  color: var(--text-dimmer);
+}
+
+.museum-classic .home-flow-card--step2.is-locked .home-flow-icon {
+  color: var(--text-dimmer);
+  opacity: 0.65;
+}
+
+.museum-classic .home-flow-step-label {
+  margin: 0 0 8px;
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.museum-classic .home-flow-card-foot {
+  margin-top: auto;
+  padding-top: 16px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold-soft);
+}
+
+.museum-classic .home-flow-title {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: clamp(22px, 3vw, 28px);
+  font-weight: 400;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.museum-classic .home-flow-desc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.museum-classic .home-flow-icon {
+  margin: 8px 0 12px;
+  color: var(--gold-soft);
+  align-self: center;
+}
+
+.museum-classic .home-flow-card--step1 .home-flow-icon--collection,
+.museum-classic .home-flow-card--step2 .home-flow-icon--museum {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+  margin: 12px 0;
+}
+
+.museum-classic .home-flow-icon--museum svg,
+.museum-classic .home-flow-icon--collection svg {
+  width: 78px;
+  height: 78px;
+}
+
+.museum-classic .home-flow-card--step2.is-locked .home-flow-icon {
+  margin-bottom: 12px;
+}
+
+.museum-classic .home-flow-card--step2.is-locked .home-flow-icon--museum {
+  margin: 12px 0;
+}
+
+.museum-classic .home-flow-lock-panel {
+  margin-top: auto;
+}
+
+.museum-classic .home-flow-lock-text {
+  margin: 0;
+  padding: 14px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.museum-classic .home-flow-lock-icon {
+  opacity: 0.85;
+}
+
+.museum-classic .home-flow-footer-hint {
+  margin: 28px 0 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--gold-soft);
+  text-align: center;
 }
 
 /* ---------- Card grid ---------- */

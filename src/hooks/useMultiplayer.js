@@ -10,9 +10,17 @@ function getServerUrl() {
   return undefined
 }
 
-export function useMultiplayer(displayName, sessionCode) {
+export function useMultiplayer(displayName, sessionCode, opts = {}) {
+  const userId = typeof opts.userId === 'string' ? opts.userId.trim() : ''
+  const hostUserId = typeof opts.hostUserId === 'string' ? opts.hostUserId.trim() : ''
+  const inMuseum = Boolean(opts.inMuseum)
+
   const [status, setStatus] = useState('connecting')
   const [localId, setLocalId] = useState(null)
+  const [museumSessionLive, setMuseumSessionLive] = useState(false)
+  const [favoritesRoundActive, setFavoritesRoundActive] = useState(false)
+  const [favoritesPicksByUser, setFavoritesPicksByUser] = useState({})
+  const [connectedSessionUserIds, setConnectedSessionUserIds] = useState([])
   const [remotePlayers, setRemotePlayers] = useState({})
   const [combatById, setCombatById] = useState({})
   const [hitEvents, setHitEvents] = useState([])
@@ -40,7 +48,13 @@ export function useMultiplayer(displayName, sessionCode) {
     socketRef.current = socket
 
     const emitJoin = () => {
-      socket.emit('join', { name, sessionCode: room })
+      socket.emit('join', {
+        name,
+        sessionCode: room,
+        userId,
+        hostUserId,
+        inMuseum,
+      })
     }
 
     const onConnect = () => {
@@ -55,12 +69,43 @@ export function useMultiplayer(displayName, sessionCode) {
     socket.on('disconnect', onDisconnect)
     socket.on('connect_error', onConnectError)
 
-    socket.on('welcome', ({ id: myId, players }) => {
+    socket.on('welcome', (payload) => {
+      const myId = payload.id
+      const players = payload.players
       setLocalId(myId)
+      setMuseumSessionLive(Boolean(payload.museumSessionLive))
+      setFavoritesRoundActive(Boolean(payload.favoritesRoundActive))
+      setFavoritesPicksByUser(
+        payload.favoritesPicks && typeof payload.favoritesPicks === 'object'
+          ? { ...payload.favoritesPicks }
+          : {},
+      )
+      setConnectedSessionUserIds(
+        Array.isArray(payload.connectedUserIds) ? [...payload.connectedUserIds] : [],
+      )
       const others = { ...players }
       delete others[myId]
       setRemotePlayers(others)
       setCombatById(players || {})
+    })
+
+    socket.on('museumSessionLive', ({ live }) => {
+      setMuseumSessionLive(Boolean(live))
+    })
+
+    socket.on('favoritesRound', ({ active, picks }) => {
+      setFavoritesRoundActive(Boolean(active))
+      setFavoritesPicksByUser(
+        picks && typeof picks === 'object' ? { ...picks } : {},
+      )
+    })
+
+    socket.on('favoritesPicksSync', ({ picks }) => {
+      setFavoritesPicksByUser(picks && typeof picks === 'object' ? { ...picks } : {})
+    })
+
+    socket.on('sessionPresence', ({ userIds }) => {
+      setConnectedSessionUserIds(Array.isArray(userIds) ? [...userIds] : [])
     })
 
     socket.on('playerJoined', ({ id, x, y, z, yaw, name: playerName, ...rest }) => {
@@ -253,8 +298,12 @@ export function useMultiplayer(displayName, sessionCode) {
       socket.disconnect()
       socketRef.current = null
       setSessionCloseAt(0)
+      setMuseumSessionLive(false)
+      setFavoritesRoundActive(false)
+      setFavoritesPicksByUser({})
+      setConnectedSessionUserIds([])
     }
-  }, [displayName, sessionCode])
+  }, [displayName, sessionCode, userId, hostUserId, inMuseum])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -278,6 +327,23 @@ export function useMultiplayer(displayName, sessionCode) {
     socket.emit('playerHit', { victimId })
   }, [])
 
+  const startFavoritesRound = useCallback(() => {
+    socketRef.current?.emit('favoritesStartRound')
+  }, [])
+
+  const cancelFavoritesRound = useCallback(() => {
+    socketRef.current?.emit('favoritesCancelRound')
+  }, [])
+
+  const submitFavoritePicks = useCallback(
+    (artworkIds) => {
+      const socket = socketRef.current
+      if (!socket?.connected || !userId) return
+      socket.emit('favoritesSubmitPicks', { userId, artworkIds: artworkIds ?? [] })
+    },
+    [userId],
+  )
+
   const localCombat = localId ? combatById[localId] : null
   const respawnRemaining = Math.max(
     0,
@@ -291,6 +357,13 @@ export function useMultiplayer(displayName, sessionCode) {
   return {
     status,
     localId,
+    museumSessionLive,
+    favoritesRoundActive,
+    favoritesPicksByUser,
+    connectedSessionUserIds,
+    startFavoritesRound,
+    cancelFavoritesRound,
+    submitFavoritePicks,
     remotePlayers,
     combatById,
     hitEvents,

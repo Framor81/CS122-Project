@@ -18,7 +18,9 @@ async function attachSignedUrls(rows) {
   )
 }
 
-export function useUserArtworks(userId) {
+export function useUserArtworks(userId, options = {}) {
+  const limit =
+    typeof options.limit === 'number' && options.limit > 0 ? Math.min(options.limit, 500) : 48
   const subscriptionId = useId()
   const [resolvedUserId, setResolvedUserId] = useState(userId || null)
   const [artworks, setArtworks] = useState([])
@@ -54,7 +56,7 @@ export function useUserArtworks(userId) {
       )
       .eq('user_id', ownerId)
       .order('created_at', { ascending: false })
-      .limit(48)
+      .limit(limit)
 
     if (queryError) {
       const message = queryError.message || 'Could not load artworks.'
@@ -76,7 +78,7 @@ export function useUserArtworks(userId) {
     }
     setArtworks(final)
     setLoading(false)
-  }, [resolvedUserId, userId])
+  }, [limit, resolvedUserId, userId])
 
   useEffect(() => {
     queueMicrotask(() => {

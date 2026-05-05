@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
-import { useMultiplayer } from '../hooks/useMultiplayer.js'
+import { SessionFavoritesModal } from '../components/SessionFavoritesModal.jsx'
+import { useUserArtworks } from '../hooks/useUserArtworks.js'
+import { applySessionFavoriteFilter } from '../lib/sessionFavoriteFilter.js'
 import { estimateMuseumArtworkCapacity } from '../world/galleryCapacity.js'
 import { SessionChat } from '../components/SessionChat.jsx'
 import { Museum3DShell } from '../components/Museum3DShell.jsx'
@@ -12,12 +14,13 @@ export function SessionLobby({
   museumMap,
   museumMapLoading,
   chat,
+  multiplayer,
   onEnterMuseum,
   onNavigate,
   onNavigate3D,
   onSignOut,
 }) {
-  const multiplayer = useMultiplayer(displayName, sessionCode)
+  const userCollection = useUserArtworks(userId, { limit: 200 })
   const [copied, setCopied] = useState(false)
   const [scopeSaving, setScopeSaving] = useState(false)
   const [scopeActionError, setScopeActionError] = useState('')
@@ -28,7 +31,17 @@ export function SessionLobby({
     return estimateMuseumArtworkCapacity(m.seedText, m.gridSize)
   }, [museumMap])
 
-  const poolCount = sessionArtworks.artworks?.length ?? 0
+  const poolArtworks = useMemo(
+    () =>
+      applySessionFavoriteFilter(sessionArtworks.artworks || [], multiplayer.favoritesPicksByUser),
+    [multiplayer.favoritesPicksByUser, sessionArtworks.artworks],
+  )
+  const poolCount = poolArtworks.length ?? 0
+
+  const hasSubmittedFavorites =
+    Boolean(userId) && Object.prototype.hasOwnProperty.call(multiplayer.favoritesPicksByUser, userId)
+  const showFavoritesModal =
+    multiplayer.favoritesRoundActive && Boolean(userId) && !hasSubmittedFavorites
   const placedCount = capacity > 0 ? Math.min(poolCount, capacity) : 0
   const overflow = poolCount > capacity && capacity > 0
   const galleryLoading = sessionArtworks.loading || museumMapLoading
@@ -42,6 +55,10 @@ export function SessionLobby({
     if (typeof window === 'undefined') return ''
     return `${window.location.origin}/${sessionCode}`
   }, [sessionCode])
+
+  const enterDisabled =
+    sessionArtworks.loading ||
+    (!sessionArtworks.isHost && !multiplayer.museumSessionLive)
 
   const copyLink = async () => {
     try {
@@ -85,40 +102,76 @@ export function SessionLobby({
 
               <div className="m3d-gallery-panel">
                 {sessionArtworks.isHost ? (
-                  <label className="m3d-gallery-scope">
-                    <span className="m3d-gallery-scope-label">Museum collection</span>
-                    <select
-                      className="m3d-gallery-select"
-                      value={sessionArtworks.scope}
-                      disabled={scopeSaving}
-                      onChange={async (e) => {
-                        const next = e.target.value
-                        setScopeActionError('')
-                        setScopeSaving(true)
-                        try {
-                          const result = await sessionArtworks.setScope(next)
-                          if (result?.error) setScopeActionError(result.error)
-                        } finally {
-                          setScopeSaving(false)
+                  <>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={multiplayer.favoritesRoundActive}
+                      className={`m3d-favorites-toggle-btn${multiplayer.favoritesRoundActive ? ' is-on' : ''}`}
+                      disabled={multiplayer.status !== 'connected'}
+                      title={
+                        multiplayer.status !== 'connected'
+                          ? 'Connect to the session server to use this (check multiplayer is running).'
+                          : undefined
+                      }
+                      onClick={() => {
+                        if (multiplayer.favoritesRoundActive) {
+                          multiplayer.cancelFavoritesRound()
+                        } else {
+                          multiplayer.startFavoritesRound()
                         }
                       }}
                     >
-                      <option value="host">My uploads only</option>
-                      <option value="all">Everyone’s uploads</option>
-                    </select>
-                    {scopeActionError ? (
-                      <p className="m3d-gallery-scope-error" role="alert">
-                        {scopeActionError}
-                      </p>
-                    ) : null}
-                  </label>
-                ) : (
+                      <span className="m3d-favorites-toggle-track" aria-hidden />
+                      <span className="m3d-favorites-toggle-label">Select up to 5 favorites each</span>
+                    </button>
+                    <label className="m3d-gallery-scope">
+                      <span className="m3d-gallery-scope-label">Museum collection</span>
+                      <select
+                        className="m3d-gallery-select"
+                        value={sessionArtworks.scope}
+                        disabled={scopeSaving}
+                        onChange={async (e) => {
+                          const next = e.target.value
+                          setScopeActionError('')
+                          setScopeSaving(true)
+                          try {
+                            const result = await sessionArtworks.setScope(next)
+                            if (result?.error) setScopeActionError(result.error)
+                          } finally {
+                            setScopeSaving(false)
+                          }
+                        }}
+                      >
+                        <option value="host">My uploads only</option>
+                        <option value="all">Everyone in this session</option>
+                      </select>
+                      {scopeActionError ? (
+                        <p className="m3d-gallery-scope-error" role="alert">
+                          {scopeActionError}
+                        </p>
+                      ) : null}
+                    </label>
+                  </>
+                ) : multiplayer.favoritesRoundActive ? (
+                  <p className="m3d-favorites-host-note" role="status">
+                    The host asked everyone to choose up to five works from their own uploads for this visit.
+                  </p>
+                ) : null}
+
+                {!sessionArtworks.isHost ? (
                   <p className="m3d-gallery-guest-note">
                     {sessionArtworks.scope === 'all'
-                      ? 'The host is including artwork from all accounts.'
+                      ? 'The host is pooling uploads from everyone connected here (session lobby).'
                       : 'The host is using their own collection only.'}
                   </p>
-                )}
+                ) : null}
+
+                {multiplayer.favoritesRoundActive && Object.keys(multiplayer.favoritesPicksByUser).length > 0 ? (
+                  <p className="m3d-favorites-progress">
+                    {`${Object.keys(multiplayer.favoritesPicksByUser).length} player(s) saved picks so far.`}
+                  </p>
+                ) : null}
 
                 {galleryLoading ? (
                   <p className="m3d-gallery-summary m3d-gallery-summary--loading">Estimating the gallery…</p>
@@ -152,9 +205,21 @@ export function SessionLobby({
                 )}
               </div>
 
-              <button type="button" className="m3d-enter-museum" onClick={onEnterMuseum}>
+              <button
+                type="button"
+                className="m3d-enter-museum"
+                disabled={enterDisabled}
+                onClick={onEnterMuseum}
+              >
                 Enter the museum →
               </button>
+              {!sessionArtworks.loading &&
+              !sessionArtworks.isHost &&
+              !multiplayer.museumSessionLive ? (
+                <p className="m3d-enter-museum-hint" role="status">
+                  The host opens the museum first — you&apos;ll be able to follow once they enter.
+                </p>
+              ) : null}
             </section>
             <section className="m3d-lobby-card">
               <div className="m3d-people-label">{`People in this server (${playerNames.length})`}</div>
@@ -167,6 +232,13 @@ export function SessionLobby({
           </div>
         </div>
       </Museum3DShell>
+      <SessionFavoritesModal
+        open={showFavoritesModal}
+        loading={userCollection.loading}
+        error={userCollection.error}
+        artworks={userCollection.artworks}
+        onConfirm={(ids) => multiplayer.submitFavoritePicks(ids)}
+      />
       <SessionChat chat={chat} top={132} width={340} maxHeight={360} />
     </>
   )

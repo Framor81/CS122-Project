@@ -17,15 +17,20 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import {
+  ARTWORK_THEME_OPTIONS,
   normalizeArtworkThemes,
   THEMES_PROMPT_SECTION,
 } from "./artworkThemes.js";
+
+/** Reinforces exact spelling — same strings as ARTWORK_THEME_OPTIONS / THEMES_PROMPT_SECTION. */
+const THEME_ENUM_INLINE = ARTWORK_THEME_OPTIONS.join(", ");
 
 const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const OPENROUTER_MODEL =
   Deno.env.get("OPENROUTER_MODEL") || "nvidia/nemotron-nano-12b-v2-vl:free";
+const OPENROUTER_TIMEOUT_MS = Number(Deno.env.get("OPENROUTER_TIMEOUT_MS") || "20000");
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +50,9 @@ const PROMPT = `You are an expert art historian analyzing a photograph of an art
 taken inside a museum. Identify the artwork if you can.
 
 ${THEMES_PROMPT_SECTION}
+
+Closed vocabulary for the JSON "themes" array — use ONLY these exact strings (copy spelling and punctuation character-for-character):
+${THEME_ENUM_INLINE}
 
 Respond with ONLY a JSON object (no prose, no markdown fences) matching this shape:
 
@@ -77,7 +85,25 @@ interface RecognizePayload {
   artwork_id: string;
 }
 
+function logError(label: string, err: unknown, context?: Record<string, unknown>) {
+  const payload: Record<string, unknown> = {
+    label,
+    ...(context || {}),
+  };
+  if (err instanceof Error) {
+    payload.error_name = err.name;
+    payload.error_message = err.message;
+    payload.error_stack = err.stack;
+    const cause = (err as Error & { cause?: unknown }).cause;
+    if (cause !== undefined) payload.error_cause = cause;
+  } else {
+    payload.error_value = err;
+  }
+  console.error("[recognize-artwork]", payload);
+}
+
 Deno.serve(async (req) => {
+  try {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });
   }
@@ -105,6 +131,9 @@ Deno.serve(async (req) => {
     return json({ error: "artwork_id required" }, 400);
   }
   const payload: RecognizePayload = { artwork_id: artworkId };
+  if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY.trim().length < 10) {
+    return json({ error: "server misconfigured", detail: "OPENROUTER_API_KEY missing/invalid" }, 500);
+  }
 
   const userClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     global: { headers: { Authorization: authHeader } },
@@ -138,6 +167,11 @@ Deno.serve(async (req) => {
     .from("artworks")
     .download(artwork.image_path);
   if (dlErr || !blob) {
+    logError("image download failed", dlErr, {
+      artwork_id: artwork.id,
+      image_path: artwork.image_path,
+      user_id: userId,
+    });
     await adminClient
       .from("artworks")
       .update({ status: "error", error_message: "image download failed" })
@@ -149,48 +183,152 @@ Deno.serve(async (req) => {
   const base64 = base64FromBytes(bytes);
   const mediaType = resolveMediaType(blob.type, artwork.image_path);
 
-  const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "authorization": `Bearer ${OPENROUTER_API_KEY}`,
-      "http-referer": "https://cs122-project.vercel.app",
-      "x-title": "Personal Museum",
-    },
-    body: JSON.stringify({
-      model: OPENROUTER_MODEL,
-      max_tokens: 1024,
-      temperature: 0.2,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${mediaType};base64,${base64}`,
+  if (mediaType === "image/heic" || mediaType === "image/heif") {
+    const fallback = buildFallbackUpdate(
+      "HEIC/HEIF image uploaded. Automatic visual recognition is limited for this format in the current model provider.",
+      "unsupported provider image format",
+    );
+    const { error: fallbackErr } = await adminClient
+      .from("artworks")
+      .update(fallback)
+      .eq("id", artwork.id);
+    if (fallbackErr) {
+      return json({ error: "db update failed", detail: fallbackErr.message }, 500);
+    }
+    return json({
+      ok: true,
+      artwork_id: artwork.id,
+      warning: "HEIC/HEIF currently stores fallback metadata; convert to JPG/PNG/WebP for full recognition.",
+      ...fallback,
+    });
+  }
+
+  let aiRes: Response;
+  const abortController = new AbortController();
+  const openrouterTimeout = setTimeout(() => abortController.abort("openrouter-timeout"), OPENROUTER_TIMEOUT_MS);
+  try {
+    aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: abortController.signal,
+      headers: {
+        "content-type": "application/json",
+        "authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "http-referer": "https://cs122-project.vercel.app",
+        "x-title": "Personal Museum",
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        max_tokens: 1024,
+        temperature: 0.2,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${mediaType};base64,${base64}`,
+                },
               },
-            },
-            { type: "text", text: PROMPT },
-          ],
+              { type: "text", text: PROMPT },
+            ],
+          },
+        ],
+      }),
+    });
+  } catch (e) {
+    const isTimeout =
+      e instanceof Error &&
+      (e.name === "AbortError" ||
+        String(e.message).toLowerCase().includes("abort") ||
+        String(e.message).toLowerCase().includes("timed out"));
+    logError("openrouter fetch failed", e, {
+      artwork_id: artwork.id,
+      image_path: artwork.image_path,
+      media_type: mediaType,
+      model: OPENROUTER_MODEL,
+      timeout_ms: OPENROUTER_TIMEOUT_MS,
+      timeout_triggered: isTimeout,
+    });
+    const { error: markErr } = await adminClient
+      .from("artworks")
+      .update({
+        status: "error",
+        error_message: isTimeout
+          ? `openrouter timeout after ${OPENROUTER_TIMEOUT_MS}ms`
+          : `openrouter fetch failed: ${String(e).slice(0, 240)}`,
+      })
+      .eq("id", artwork.id);
+    if (markErr) {
+      return json({ error: "db update failed", detail: markErr.message }, 500);
+    }
+    return json(
+      {
+        error: isTimeout ? "openrouter timeout" : "openrouter fetch failed",
+        detail: String(e),
+        diagnostics: {
+          model: OPENROUTER_MODEL,
+          timeout_ms: OPENROUTER_TIMEOUT_MS,
+          timeout_triggered: isTimeout,
+          likely_cause: isTimeout
+            ? "Provider is slow/unreachable from edge runtime."
+            : "Network error before provider responded.",
         },
-      ],
-    }),
-  });
+      },
+      502,
+    );
+  } finally {
+    clearTimeout(openrouterTimeout);
+  }
 
   if (!aiRes.ok) {
     const txt = await aiRes.text();
-    await adminClient
+    logError("openrouter non-2xx", txt, {
+      artwork_id: artwork.id,
+      image_path: artwork.image_path,
+      media_type: mediaType,
+      model: OPENROUTER_MODEL,
+      provider_status: aiRes.status,
+      provider_response_preview: txt.slice(0, 1500),
+    });
+    const { error: markErr } = await adminClient
       .from("artworks")
-      .update({ status: "error", error_message: `openrouter ${aiRes.status}` })
+      .update({
+        status: "error",
+        error_message: `openrouter ${aiRes.status}`,
+        raw_ai: jsonSafeObject({
+          provider_status: aiRes.status,
+          provider_body_preview: txt.slice(0, 1800),
+          provider_headers: captureProviderHeaders(aiRes),
+        }),
+      })
       .eq("id", artwork.id);
-    return json({ error: "openrouter failed", status: aiRes.status, detail: txt }, 502);
+    if (markErr) {
+      return json({ error: "db update failed", detail: markErr.message }, 500);
+    }
+    return json({
+      error: "openrouter failed",
+      detail: txt.slice(0, 2000),
+      diagnostics: {
+        model: OPENROUTER_MODEL,
+        provider_status: aiRes.status,
+        provider_headers: captureProviderHeaders(aiRes),
+        auth_likely_invalid: aiRes.status === 401 || aiRes.status === 403,
+        rate_limited: aiRes.status === 429,
+      },
+    }, 502);
   }
 
   let aiJson: unknown;
   try {
     aiJson = await aiRes.json();
   } catch (e) {
+    logError("openrouter response parse failed", e, {
+      artwork_id: artwork.id,
+      image_path: artwork.image_path,
+      media_type: mediaType,
+      model: OPENROUTER_MODEL,
+    });
     await adminClient
       .from("artworks")
       .update({
@@ -203,6 +341,13 @@ Deno.serve(async (req) => {
 
   const text = extractModelText(aiJson).trim();
   if (!text) {
+    logError("empty model output", null, {
+      artwork_id: artwork.id,
+      image_path: artwork.image_path,
+      media_type: mediaType,
+      model: OPENROUTER_MODEL,
+      raw_ai_json_preview: safeStringify(aiJson).slice(0, 1500),
+    });
     await adminClient
       .from("artworks")
       .update({
@@ -218,30 +363,50 @@ Deno.serve(async (req) => {
   try {
     parsedRoot = JSON.parse(extractJsonCandidate(stripFences(text)));
   } catch (e) {
-    await adminClient
+    logError("model JSON parse failed", e, {
+      artwork_id: artwork.id,
+      image_path: artwork.image_path,
+      media_type: mediaType,
+      raw_text_preview: text.slice(0, 1500),
+    });
+    const fallback = buildFallbackUpdate(text, `model did not return JSON: ${String(e)}`);
+    const { error: fallbackErr } = await adminClient
       .from("artworks")
-      .update({
-        status: "error",
-        error_message: "model did not return JSON",
-        raw_ai: { raw_text: text } as Record<string, unknown>,
-      })
+      .update(fallback)
       .eq("id", artwork.id);
-    return json({ error: "bad AI response", detail: String(e), raw: text }, 502);
+    if (fallbackErr) {
+      return json({ error: "db update failed", detail: fallbackErr.message }, 500);
+    }
+    return json({
+      ok: true,
+      artwork_id: artwork.id,
+      warning: "Model output was not strict JSON; stored fallback analysis.",
+      ...fallback,
+    });
   }
 
   if (!isJsonObject(parsedRoot)) {
-    await adminClient
+    logError("model root not object", null, {
+      artwork_id: artwork.id,
+      image_path: artwork.image_path,
+      media_type: mediaType,
+      parsed_root_type: Array.isArray(parsedRoot) ? "array" : typeof parsedRoot,
+      raw_text_preview: text.slice(0, 1500),
+    });
+    const fallback = buildFallbackUpdate(text, "model returned a non-object JSON root");
+    const { error: fallbackErr } = await adminClient
       .from("artworks")
-      .update({
-        status: "error",
-        error_message: "model returned a non-object JSON root",
-        raw_ai: { raw_text: text } as Record<string, unknown>,
-      })
+      .update(fallback)
       .eq("id", artwork.id);
-    return json(
-      { error: "bad AI response", detail: "expected a JSON object at the root" },
-      502,
-    );
+    if (fallbackErr) {
+      return json({ error: "db update failed", detail: fallbackErr.message }, 500);
+    }
+    return json({
+      ok: true,
+      artwork_id: artwork.id,
+      warning: "Model root was not a JSON object; stored fallback analysis.",
+      ...fallback,
+    });
   }
 
   const parsed = parsedRoot;
@@ -279,7 +444,11 @@ Deno.serve(async (req) => {
 
     return json({ ok: true, artwork_id: artwork.id, ...update });
   } catch (err) {
-    console.error("recognize-artwork handler error:", err);
+    logError("recognize-artwork handler error", err, {
+      artwork_id: artwork.id,
+      image_path: artwork.image_path,
+      media_type: mediaType,
+    });
     const msg = err instanceof Error ? err.message : String(err);
     try {
       await adminClient
@@ -293,6 +462,11 @@ Deno.serve(async (req) => {
       // ignore
     }
     return json({ error: "internal error", detail: msg }, 500);
+  }
+  } catch (fatal) {
+    logError("recognize-artwork fatal error", fatal);
+    const detail = fatal instanceof Error ? fatal.message : String(fatal);
+    return json({ error: "fatal edge function error", detail }, 500);
   }
 });
 
@@ -368,6 +542,29 @@ function extractModelText(ai: unknown): string {
   return "";
 }
 
+function buildFallbackUpdate(rawText: string, reason: string) {
+  const description =
+    stringOrNull(rawText)?.slice(0, 4000) ||
+    "Unable to parse structured output. This appears to be an artwork image.";
+  return {
+    status: "ready" as const,
+    title: null,
+    artist: null,
+    period: null,
+    date_text: null,
+    medium: null,
+    dimensions: null,
+    location_guess: null,
+    description,
+    themes: normalizeArtworkThemes(rawText),
+    raw_ai: jsonSafeObject({
+      raw_text: rawText,
+      fallback_reason: reason,
+    }),
+    error_message: null,
+  };
+}
+
 function base64FromBytes(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000;
@@ -375,4 +572,32 @@ function base64FromBytes(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
   return btoa(binary);
+}
+
+function safeStringify(v: unknown): string {
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return "[unserializable]";
+  }
+}
+
+function captureProviderHeaders(res: Response): Record<string, string> {
+  const keys = [
+    "x-request-id",
+    "x-ratelimit-limit-requests",
+    "x-ratelimit-remaining-requests",
+    "x-ratelimit-reset-requests",
+    "x-ratelimit-limit-tokens",
+    "x-ratelimit-remaining-tokens",
+    "x-ratelimit-reset-tokens",
+    "retry-after",
+    "cf-ray",
+  ];
+  const out: Record<string, string> = {};
+  for (const k of keys) {
+    const v = res.headers.get(k);
+    if (v) out[k] = v;
+  }
+  return out;
 }

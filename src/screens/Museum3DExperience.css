@@ -22,6 +22,7 @@
   position: fixed;
   inset: 0;
   z-index: 0;
+  pointer-events: none;
   background-color: #050403;
   background-image:
     radial-gradient(ellipse 90% 65% at 50% 115%, rgba(120, 92, 58, 0.22) 0%, transparent 52%),
@@ -118,7 +119,7 @@
 
 .museum-3d-shell__main {
   position: relative;
-  z-index: 2;
+  z-index: 3;
   min-height: calc(100vh - 72px);
   display: flex;
   flex-direction: column;
@@ -530,9 +531,260 @@
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.m3d-enter-museum:hover {
+.m3d-enter-museum:hover:not(:disabled) {
   background: rgba(197, 160, 89, 0.12);
   color: #fff;
+}
+
+.m3d-enter-museum:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+  color: rgba(197, 160, 89, 0.65);
+  border-color: rgba(197, 160, 89, 0.35);
+}
+
+.m3d-enter-museum-hint {
+  margin: 12px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.m3d-favorites-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.86);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid rgba(197, 160, 89, 0.28);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.m3d-favorites-toggle-btn:hover:not(:disabled) {
+  border-color: rgba(197, 160, 89, 0.45);
+  background: rgba(197, 160, 89, 0.06);
+}
+
+.m3d-favorites-toggle-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.m3d-favorites-toggle-btn.is-on {
+  border-color: rgba(197, 160, 89, 0.55);
+  background: rgba(197, 160, 89, 0.08);
+}
+
+.m3d-favorites-toggle-track {
+  flex-shrink: 0;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  position: relative;
+  transition: background 0.15s ease;
+}
+
+.m3d-favorites-toggle-btn.is-on .m3d-favorites-toggle-track {
+  background: rgba(197, 160, 89, 0.35);
+  border-color: rgba(197, 160, 89, 0.45);
+}
+
+.m3d-favorites-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #f5f0ea;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease;
+}
+
+.m3d-favorites-toggle-btn.is-on .m3d-favorites-toggle-track::after {
+  transform: translateX(16px);
+}
+
+.m3d-favorites-toggle-label {
+  flex: 1;
+}
+
+.m3d-favorites-host-note,
+.m3d-favorites-progress {
+  margin: 0 0 14px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(255, 220, 176, 0.82);
+}
+
+.m3d-favorites-progress {
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.m3d-favorites-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 380;
+  background: rgba(8, 6, 5, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(7px);
+}
+
+.m3d-favorites-dialog {
+  width: min(720px, 100%);
+  max-height: min(88vh, 720px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(197, 160, 89, 0.38);
+  background: rgba(18, 14, 12, 0.97);
+  border-radius: 12px;
+  padding: 22px 22px 18px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
+}
+
+.m3d-favorites-title {
+  margin: 0 0 8px;
+  font-family: 'Playfair Display', serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: #f4eadf;
+  letter-spacing: 0.02em;
+}
+
+.m3d-favorites-sub {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.m3d-favorites-counter {
+  margin-bottom: 14px;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--m3d-gold);
+}
+
+.m3d-favorites-loading,
+.m3d-favorites-empty {
+  margin: 16px 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.m3d-favorites-error {
+  margin: 16px 0;
+  font-size: 0.85rem;
+  color: #e8a598;
+}
+
+.m3d-favorites-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 10px;
+  padding: 4px 2px 14px;
+}
+
+.m3d-favorites-tile {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.m3d-favorites-tile.is-selected {
+  border-color: #c5a055;
+  box-shadow: 0 0 0 1px rgba(197, 160, 89, 0.4);
+}
+
+.m3d-favorites-tile.is-blocked {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.m3d-favorites-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.m3d-favorites-check {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #c5a055;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.m3d-favorites-check::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid #1a120c;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.m3d-favorites-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid rgba(197, 160, 89, 0.15);
+}
+
+.m3d-favorites-save {
+  padding: 10px 22px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #1a120c;
+  background: linear-gradient(180deg, #e4c88a 0%, #c5a055 100%);
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.m3d-favorites-save:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.m3d-favorites-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .m3d-people-label {

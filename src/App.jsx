@@ -23,10 +23,11 @@ import { useSessionChat } from './hooks/useSessionChat.js'
 import { useSharedMuseumMap } from './hooks/useSharedMuseumMap.js'
 import { useSessionArtworks } from './hooks/useSessionArtworks.js'
 import { useArtworksReady } from './hooks/useArtworksReady.js'
+import { applySessionFavoriteFilter } from './lib/sessionFavoriteFilter.js'
 
 function sanitizeSessionCode(value) {
   if (typeof value !== 'string') return ''
-  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12)
+  return value.trim().toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4)
 }
 
 const RESERVED_TOP_LEVEL_PATHS = new Set(['museum', '3d'])
@@ -47,6 +48,72 @@ function readSessionCodeFromUrl() {
   return fromQuery || null
 }
 
+function SessionExperience({
+  sessionCode,
+  userId,
+  displayName,
+  hasEnteredMuseum,
+  chat,
+  onEnterMuseum,
+  onExitMuseum,
+  onHostSessionClosed,
+  onNavigate,
+  onNavigate3D,
+  onSignOut,
+}) {
+  const [resolvedHostUserId, setResolvedHostUserId] = useState('')
+  const sharedMuseum = useSharedMuseumMap(userId, sessionCode)
+  const multiplayer = useMultiplayer(displayName, sessionCode, {
+    userId,
+    hostUserId: resolvedHostUserId,
+    inMuseum: hasEnteredMuseum,
+  })
+  const sessionArtworks = useSessionArtworks({
+    sessionCode,
+    userId,
+    connectedUserIds: multiplayer.connectedSessionUserIds,
+    onHostUserIdResolved: setResolvedHostUserId,
+  })
+
+  if (sharedMuseum.loading) {
+    return <Museum3DLoading />
+  }
+
+  if (!hasEnteredMuseum) {
+    return (
+      <SessionLobby
+        displayName={displayName}
+        userId={userId}
+        sessionCode={sessionCode}
+        sessionArtworks={sessionArtworks}
+        museumMap={sharedMuseum.museumMap}
+        museumMapLoading={sharedMuseum.loading}
+        chat={chat}
+        multiplayer={multiplayer}
+        onEnterMuseum={onEnterMuseum}
+        onNavigate={onNavigate}
+        onNavigate3D={onNavigate3D}
+        onSignOut={onSignOut}
+      />
+    )
+  }
+
+  return (
+    <MuseumSession
+      displayName={displayName}
+      userId={userId}
+      sessionCode={sessionCode}
+      sessionArtworks={sessionArtworks}
+      chat={chat}
+      museumMap={sharedMuseum.museumMap}
+      multiplayer={multiplayer}
+      onRegenerateMap={sharedMuseum.regenerateMap}
+      onExitMuseum={onExitMuseum}
+      onHostSessionClosed={onHostSessionClosed}
+    />
+  )
+}
+
 function MuseumSession({
   displayName,
   userId,
@@ -57,16 +124,21 @@ function MuseumSession({
   onExitMuseum,
   onHostSessionClosed,
   sessionArtworks,
+  multiplayer,
 }) {
   const [chatOpen, setChatOpen] = useState(false)
   const inputRef = useGameInput({ disabled: chatOpen })
-  const multiplayer = useMultiplayer(displayName, sessionCode)
+  const artworksForGallery = useMemo(
+    () =>
+      applySessionFavoriteFilter(sessionArtworks.artworks, multiplayer.favoritesPicksByUser),
+    [multiplayer.favoritesPicksByUser, sessionArtworks.artworks],
+  )
   const artworkUrls = useMemo(
     () =>
-      (sessionArtworks.artworks || [])
+      (artworksForGallery || [])
         .map((a) => a?.imageUrl)
         .filter(Boolean),
-    [sessionArtworks.artworks],
+    [artworksForGallery],
   )
   const artworkReadiness = useArtworksReady(artworkUrls, {
     enabled: !sessionArtworks.loading,
@@ -170,7 +242,8 @@ function MuseumSession({
       {museumReady && !combatEnabled ? <MuseumTutorialOverlay /> : null}
       {!combatEnabled ? <PlaqueInspectOverlay /> : null}
       <Canvas
-        shadows
+        dpr={[1, 1.5]}
+        gl={{ antialias: true, powerPreference: 'high-performance' }}
         camera={{ position: [0, 2.5, 10], fov: 60 }}
         style={{ position: 'fixed', inset: 0, zIndex: 0 }}
       >
@@ -192,7 +265,7 @@ function MuseumSession({
           onRegenerateMap={onRegenerateMap}
           canRegenerateMap={sessionArtworks.isHost}
           sessionCode={sessionCode}
-          artworks={sessionArtworks.artworks}
+          artworks={artworksForGallery}
           artworksLoading={sessionArtworks.loading}
         />
       </Canvas>
@@ -337,11 +410,6 @@ function App() {
   )
   const [sessionCode, setSessionCode] = useState(() => readSessionCodeFromUrl())
   const [hasEnteredMuseum, setHasEnteredMuseum] = useState(false)
-  const sharedMuseum = useSharedMuseumMap(auth.user?.id, sessionCode)
-  const sessionArtworks = useSessionArtworks({
-    sessionCode: sessionCode ?? '',
-    userId: auth.user?.id ?? '',
-  })
 
   const handleEnterMuseum = useCallback(() => {
     setHasEnteredMuseum(true)
@@ -425,7 +493,7 @@ function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  if (auth.loading || (sessionCode && sharedMuseum.loading)) {
+  if (auth.loading) {
     return <Museum3DLoading />
   }
 
@@ -505,33 +573,14 @@ function App() {
     )
   }
 
-  if (!hasEnteredMuseum) {
-    return (
-      <SessionLobby
-        displayName={effectiveDisplayName}
-        userId={auth.user.id}
-        sessionCode={sessionCode}
-        sessionArtworks={sessionArtworks}
-        museumMap={sharedMuseum.museumMap}
-        museumMapLoading={sharedMuseum.loading}
-        chat={sessionChat}
-        onEnterMuseum={handleEnterMuseum}
-        onNavigate={handleNavbarNavigate}
-        onNavigate3D={handleNavigate3D}
-        onSignOut={handleSignOut}
-      />
-    )
-  }
-
   return (
-    <MuseumSession
-      displayName={effectiveDisplayName}
-      userId={auth.user.id}
+    <SessionExperience
       sessionCode={sessionCode}
-      sessionArtworks={sessionArtworks}
+      userId={auth.user.id}
+      displayName={effectiveDisplayName}
+      hasEnteredMuseum={hasEnteredMuseum}
       chat={sessionChat}
-      museumMap={sharedMuseum.museumMap}
-      onRegenerateMap={sharedMuseum.regenerateMap}
+      onEnterMuseum={handleEnterMuseum}
       onExitMuseum={handleExitMuseum}
       onHostSessionClosed={() => {
         setHasEnteredMuseum(false)
@@ -541,6 +590,9 @@ function App() {
           setPathname('/')
         }
       }}
+      onNavigate={handleNavbarNavigate}
+      onNavigate3D={handleNavigate3D}
+      onSignOut={handleSignOut}
     />
   )
 }

@@ -1,13 +1,7 @@
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Text, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import { usePlaqueTargetsRef } from './usePlaqueTargetsRef.js'
-
-/** Matches `meshFromGrid` / `MuseumLayout`: walls occupy Y ∈ [floor, floor+wallHeight]. */
-const FLOOR_THICKNESS = 0.12
-const WALL_HEIGHT = 7.8
-/** Inside face under the ceiling slab — lights above this end up in solid geometry. */
-const INTERIOR_CEILING_Y = FLOOR_THICKNESS + WALL_HEIGHT
 
 const FRAME_COLOR = '#c9a035'
 const PICTURE_FALLBACK_COLOR = '#252525'
@@ -34,7 +28,7 @@ function PicturePlane({ url, picW, picH, position, rotation }) {
     // Configure GPU texture after load (Three mutates texture objects in place).
     Object.assign(texture, {
       colorSpace: THREE.SRGBColorSpace,
-      anisotropy: 8,
+      anisotropy: 2,
       needsUpdate: true,
     })
   }, [texture])
@@ -153,67 +147,9 @@ function PlaqueMeshText({ position, rotation, plaque, children }) {
   )
 }
 
-function PaintingSpotlight({ frame }) {
-  const lightRef = useRef(null)
-  const targetRef = useRef(null)
-
-  const sinY = Math.sin(frame.rotation[1])
-  const cosY = Math.cos(frame.rotation[1])
-
-  const frameCenterY = frame.position[1]
-  const frameTop = frameCenterY + frame.height / 2
-  // Preferred mount height above frame centre (gallery rail position).
-  const desiredY = frameCenterY + frame.height * 0.48 + 0.52
-  // Stay slightly below interior ceiling; stay clearly above frame top when possible.
-  const minY = frameTop + 0.08
-  const maxY = INTERIOR_CEILING_Y - 0.14
-  let ly = desiredY
-  if (minY <= maxY) {
-    ly = Math.min(Math.max(desiredY, minY), maxY)
-  } else {
-    ly = maxY
-  }
-  // If we had to pull the fixture down, move it a bit further into the room so the cone still covers the canvas.
-  const drop = Math.max(0, desiredY - ly)
-  const fwd = 0.72 + drop * 0.55
-
-  const lx = frame.position[0] + sinY * fwd
-  const lz = frame.position[2] + cosY * fwd
-
-  const face = frame.depth / 2 + 0.07
-  const tx = frame.position[0] + sinY * face
-  const ty = frame.position[1]
-  const tz = frame.position[2] + cosY * face
-
-  useLayoutEffect(() => {
-    const L = lightRef.current
-    const T = targetRef.current
-    if (L && T) {
-      L.target = T
-      T.updateMatrixWorld(true)
-    }
-  }, [lx, ly, lz, tx, ty, tz])
-
-  return (
-    <>
-      <group ref={targetRef} position={[tx, ty, tz]} />
-      <spotLight
-        ref={lightRef}
-        position={[lx, ly, lz]}
-        angle={0.38}
-        intensity={48}
-        penumbra={0.85}
-        color="#ffe8c6"
-        distance={60}
-        decay={2}
-        castShadow={false}
-      />
-    </>
-  )
-}
-
 /**
- * Single gallery unit: warm spotlight, gold frame, artwork plane, plaque text.
+ * Single gallery unit: gold frame, artwork plane, plaque text.
+ * (Per-painting spotLights were removed — they multiplied GPU cost with collection size.)
  */
 export function Painting({ placement }) {
   const { frame, plaque, artwork } = placement
@@ -302,14 +238,14 @@ export function Painting({ placement }) {
 
   return (
     <group>
-      <PaintingSpotlight frame={frame} />
-
-      <mesh position={frame.position} rotation={frame.rotation} castShadow>
+      <mesh position={frame.position} rotation={frame.rotation}>
         <boxGeometry args={[frame.width, frame.height, frame.depth]} />
         <meshStandardMaterial
           color={FRAME_COLOR}
           roughness={0.42}
           metalness={0.52}
+          emissive="#6b5420"
+          emissiveIntensity={0.12}
         />
       </mesh>
 

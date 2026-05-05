@@ -13,9 +13,9 @@ import { meshFromGrid } from '../world/meshFromGrid.js'
 import { estimatePlaceableArtworkCount } from '../world/generateFramePlacements.js'
 import { prepareGalleryArtworks } from '../world/prepareGalleryArtworks.js'
 
-const BG = '#121212'
-/** Exterior ground — match interior floor read under fog. */
-const GROUND = '#4a423d'
+const BG = '#2a2826'
+/** Exterior ground plane — slightly lighter than before for consistency with brighter interior. */
+const GROUND = '#5c534a'
 
 export function GameScene({
   displayName,
@@ -109,15 +109,10 @@ export function GameScene({
   return (
     <>
       <color attach="background" args={[BG]} />
-      {/* Combat: tight fog. Museum: wide + slightly lifted fog color so geometry isn't erased to pure black. */}
-      <fog
-        attach="fog"
-        args={
-          combatEnabled
-            ? [BG, 5, 20]
-            : ['#1a1a1a', 22, 118]
-        }
-      />
+      {/* Museum: no fog (minimal perf win; clearer distance). Combat keeps fog for readability. */}
+      {combatEnabled ? (
+        <fog attach="fog" args={[BG, 5, 20]} />
+      ) : null}
 
       {combatEnabled ? (
         <>
@@ -126,31 +121,27 @@ export function GameScene({
         </>
       ) : (
         <>
-          <ambientLight intensity={0.66} color="#f2f0ed" />
+          {/* Bright, even fill — no per-painting spots (see GalleryPainting). */}
+          <ambientLight intensity={1.05} color="#faf8f5" />
           <hemisphereLight
-            color="#5c5854"
-            groundColor="#34302c"
-            intensity={0.48}
+            color="#ddd9d4"
+            groundColor="#6f6a64"
+            intensity={0.75}
           />
           <directionalLight
-            position={[2, 12, 8]}
-            intensity={0.72}
-            color="#faf8f4"
+            position={[2, 14, 8]}
+            intensity={1.2}
+            color="#fffbf5"
           />
           <directionalLight
-            position={[-8, 5, -6]}
-            intensity={0.38}
-            color="#d8d2ca"
-          />
-          <directionalLight
-            position={[5, 2, -10]}
-            intensity={0.22}
-            color="#9c9690"
+            position={[-6, 6, -4]}
+            intensity={0.35}
+            color="#e8e4de"
           />
         </>
       )}
 
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[groundSize, groundSize]} />
         <meshStandardMaterial color={GROUND} roughness={0.58} />
       </mesh>
