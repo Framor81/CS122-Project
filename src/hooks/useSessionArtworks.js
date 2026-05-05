@@ -7,10 +7,15 @@ async function attachSignedUrls(rows) {
   return Promise.all(
     (rows || []).map(async (art) => {
       if (!art.image_path) return { ...art, imageUrl: '' }
-      const { data, error } = await supabase.storage
-        .from('artworks')
-        .createSignedUrl(art.image_path, 60 * 60)
-      return { ...art, imageUrl: error ? '' : data?.signedUrl || '' }
+      try {
+        const { data, error } = await supabase.storage
+          .from('artworks')
+          .createSignedUrl(art.image_path, 60 * 60)
+        return { ...art, imageUrl: error ? '' : data?.signedUrl || '' }
+      } catch {
+        // If a contributor leaves (or access changes), we drop that artwork.
+        return { ...art, imageUrl: '' }
+      }
     }),
   )
 }
@@ -140,7 +145,17 @@ export function useSessionArtworks({
       return
     }
 
-    const withUrls = await attachSignedUrls(rows || [])
+    let withUrls = []
+    try {
+      withUrls = await attachSignedUrls(rows || [])
+    } catch (urlErr) {
+      const message = urlErr?.message || 'Could not generate artwork image URLs.'
+      setError(message)
+      setArtworks([])
+      setLoading(false)
+      debugReport(`Session artwork URL signing failed: ${message}`, 'error')
+      return
+    }
     const final = withUrls
       .filter((art) => art.imageUrl)
       .sort((a, b) => String(a.id).localeCompare(String(b.id)))

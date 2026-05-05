@@ -1,27 +1,41 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import './MuseumTutorialOverlay.css'
 
-const STORAGE_KEY = 'museum3d.ftue.walkthrough.v1'
+const STORAGE_KEY_PREFIX = 'museum3d.ftue.walkthrough.v2'
 const DISPLAY_MS = 15000
 
-export function MuseumTutorialOverlay() {
+export function MuseumTutorialOverlay({ sessionCode = '' }) {
+  const storageKey = useMemo(() => {
+    const safeSession = String(sessionCode || '').trim().toUpperCase() || 'GLOBAL'
+    return `${STORAGE_KEY_PREFIX}:${safeSession}`
+  }, [sessionCode])
+
   const [visible, setVisible] = useState(() => {
     if (typeof window === 'undefined') return false
     try {
-      return !window.localStorage.getItem(STORAGE_KEY)
+      return !window.localStorage.getItem(storageKey)
     } catch {
       return true
     }
   })
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      setVisible(!window.localStorage.getItem(storageKey))
+    } catch {
+      setVisible(true)
+    }
+  }, [storageKey])
+
   const dismiss = useCallback(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, '1')
+      window.localStorage.setItem(storageKey, '1')
     } catch {
       /* ignore */
     }
     setVisible(false)
-  }, [])
+  }, [storageKey])
 
   useEffect(() => {
     if (!visible) return undefined
@@ -44,6 +58,7 @@ export function MuseumTutorialOverlay() {
           <li>
             Hold <strong>Shift</strong> to run
           </li>
+          <li>Look around with your mouse!</li>
           <li>Explore the museum — enjoy the collection</li>
         </ul>
         <p className="museum-tutorial-overlay__hint">The same reminder is painted on the floor where you arrive.</p>

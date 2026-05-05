@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Crosshair } from './gamemode/Crosshair.jsx'
 import { CombatHud } from './gamemode/CombatHud.jsx'
@@ -62,6 +62,12 @@ function SessionExperience({
   onSignOut,
 }) {
   const [resolvedHostUserId, setResolvedHostUserId] = useState('')
+  const autoFollowDisabledRef = useRef(false)
+  const prevSessionCodeRef = useRef(sessionCode)
+  if (prevSessionCodeRef.current !== sessionCode) {
+    prevSessionCodeRef.current = sessionCode
+    autoFollowDisabledRef.current = false
+  }
   const sharedMuseum = useSharedMuseumMap(userId, sessionCode)
   const multiplayer = useMultiplayer(displayName, sessionCode, {
     userId,
@@ -74,6 +80,18 @@ function SessionExperience({
     connectedUserIds: multiplayer.connectedSessionUserIds,
     onHostUserIdResolved: setResolvedHostUserId,
   })
+
+  useEffect(() => {
+    if (autoFollowDisabledRef.current) return
+    if (hasEnteredMuseum) return
+    if (!multiplayer.museumSessionLive) return
+    onEnterMuseum?.()
+  }, [hasEnteredMuseum, multiplayer.museumSessionLive, onEnterMuseum])
+
+  const handleExitMuseum = useCallback(() => {
+    autoFollowDisabledRef.current = true
+    onExitMuseum?.()
+  }, [onExitMuseum])
 
   if (sharedMuseum.loading) {
     return <Museum3DLoading />
@@ -101,14 +119,13 @@ function SessionExperience({
   return (
     <MuseumSession
       displayName={displayName}
-      userId={userId}
       sessionCode={sessionCode}
       sessionArtworks={sessionArtworks}
       chat={chat}
       museumMap={sharedMuseum.museumMap}
       multiplayer={multiplayer}
       onRegenerateMap={sharedMuseum.regenerateMap}
-      onExitMuseum={onExitMuseum}
+      onExitMuseum={handleExitMuseum}
       onHostSessionClosed={onHostSessionClosed}
     />
   )
@@ -116,7 +133,6 @@ function SessionExperience({
 
 function MuseumSession({
   displayName,
-  userId,
   sessionCode,
   chat,
   museumMap,
@@ -239,7 +255,7 @@ function MuseumSession({
         total={artworkReadiness.total}
         artworksLoading={sessionArtworks.loading}
       />
-      {museumReady && !combatEnabled ? <MuseumTutorialOverlay /> : null}
+      {museumReady && !combatEnabled ? <MuseumTutorialOverlay sessionCode={sessionCode} /> : null}
       {!combatEnabled ? <PlaqueInspectOverlay /> : null}
       <Canvas
         dpr={[1, 1.5]}
