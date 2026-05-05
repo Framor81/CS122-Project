@@ -63,6 +63,7 @@ function SessionExperience({
 }) {
   const [resolvedHostUserId, setResolvedHostUserId] = useState('')
   const autoFollowDisabledRef = useRef(false)
+  const prevMuseumLiveRef = useRef(false)
   const sharedMuseum = useSharedMuseumMap(userId, sessionCode)
   const multiplayer = useMultiplayer(displayName, sessionCode, {
     userId,
@@ -78,12 +79,15 @@ function SessionExperience({
 
   useEffect(() => {
     autoFollowDisabledRef.current = false
+    prevMuseumLiveRef.current = false
   }, [sessionCode])
 
   useEffect(() => {
     if (autoFollowDisabledRef.current) return
     if (hasEnteredMuseum) return
-    if (!multiplayer.museumSessionLive) return
+    const becameLive = multiplayer.museumSessionLive && !prevMuseumLiveRef.current
+    prevMuseumLiveRef.current = multiplayer.museumSessionLive
+    if (!becameLive) return
     onEnterMuseum?.()
   }, [hasEnteredMuseum, multiplayer.museumSessionLive, onEnterMuseum])
 
