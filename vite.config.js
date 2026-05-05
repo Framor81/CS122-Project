@@ -9,10 +9,16 @@ import {
   normalizeArtworkThemes,
   THEMES_PROMPT_SECTION,
 } from './supabase/functions/recognize-artwork/artworkThemes.js'
+import {
+  getDescriptionPromptOption,
+  normalizeDescriptionPromptId,
+} from './supabase/functions/recognize-artwork/descriptionPrompts.js'
 
 const OPENROUTER_MODEL = 'nvidia/nemotron-nano-12b-v2-vl:free'
 
-const PROMPT = `You are an expert art historian analyzing a photograph of an artwork
+function buildPrompt(descriptionPromptId) {
+  const descriptionPrompt = getDescriptionPromptOption(descriptionPromptId)
+  return `You are an expert art historian analyzing a photograph of an artwork
 taken inside a museum. Identify the artwork if you can, and describe it in a way
 that gives the viewer rich context: the artist, period, themes, and a short
 narrative description.
@@ -34,9 +40,12 @@ Respond with ONLY a JSON object (no prose, no markdown fences) matching this sha
   "confidence": "high" | "medium" | "low"
 }
 
+${descriptionPrompt.instruction}
+
 If you cannot identify the artwork, still return the JSON but set title/artist/etc.
 to null and describe what you see and apply themes from the allowed list only.
 Never return prose outside the JSON.`
+}
 
 function stringOrNull(v) {
   if (typeof v === 'string' && v.trim().length > 0) return v
@@ -127,6 +136,7 @@ function localRecognitionPlugin(env) {
           sendJson(res, 400, { error: 'artwork_id required' })
           return
         }
+        const descriptionPrompt = normalizeDescriptionPromptId(payload.description_prompt)
 
         const client = createClient(supabaseUrl, supabaseAnonKey, {
           global: { headers: { Authorization: authHeader } },
@@ -180,7 +190,7 @@ function localRecognitionPlugin(env) {
                       url: `data:${mediaType};base64,${base64}`,
                     },
                   },
-                  { type: 'text', text: PROMPT },
+                  { type: 'text', text: buildPrompt(descriptionPrompt) },
                 ],
               },
             ],
@@ -227,7 +237,7 @@ function localRecognitionPlugin(env) {
           location_guess: stringOrNull(parsed.location_guess),
           description: stringOrNull(parsed.description) || '',
           themes,
-          raw_ai: { ...parsed, themes, themes_from_model: parsed.themes },
+          raw_ai: { ...parsed, themes, themes_from_model: parsed.themes, description_prompt: descriptionPrompt },
           error_message: null,
         }
 

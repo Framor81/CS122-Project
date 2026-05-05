@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { hasSupabaseConfig, supabase } from '../lib/supabaseClient.js'
 import { useUserArtworks } from '../hooks/useUserArtworks.js'
 import { MuseumNavbar } from '../components/MuseumNavbar.jsx'
+import {
+  DEFAULT_DESCRIPTION_PROMPT_ID,
+  DESCRIPTION_PROMPT_OPTIONS,
+  normalizeDescriptionPromptId,
+} from '../../supabase/functions/recognize-artwork/descriptionPrompts.js'
 import './MuseumClassicHome.css'
 
 type AuthApi = {
@@ -38,7 +43,10 @@ type ArtworkDetail = {
   location_guess: string | null
   caption: string | null
   error_message: string | null
+  raw_ai?: { description_prompt?: string } | null
 }
+
+type DescriptionPromptId = (typeof DESCRIPTION_PROMPT_OPTIONS)[number]['id']
 
 function museumPath(path: string) {
   if (path === '/home') return '/'
@@ -73,6 +81,34 @@ function uploadStepLabel(phase: 'uploading' | 'identifying', index: number, tota
   const verb = phase === 'uploading' ? 'Uploading' : 'Identifying'
   if (total === 1) return `${verb} image…`
   return `${verb} ${index} of ${total}…`
+}
+
+function DescriptionPromptChooser({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string
+  onChange: (id: DescriptionPromptId) => void
+  disabled?: boolean
+}) {
+  const selected = normalizeDescriptionPromptId(value)
+  return (
+    <div className="description-prompt-chooser" aria-label="Description focus">
+      {DESCRIPTION_PROMPT_OPTIONS.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          className={`description-prompt-option${selected === option.id ? ' is-active' : ''}`}
+          disabled={disabled}
+          onClick={() => onChange(option.id as DescriptionPromptId)}
+        >
+          <span className="description-prompt-option__label">{option.label}</span>
+          <span className="description-prompt-option__hint">{option.description}</span>
+        </button>
+      ))}
+    </div>
+  )
 }
 
 /* -------------------- Welcome (unauthenticated home) -------------------- */
@@ -674,6 +710,10 @@ function MuseumAddArtwork({
   const [uploadPhase, setUploadPhase] = useState<'idle' | 'uploading' | 'identifying'>('idle')
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
   const [uploadPreview, setUploadPreview] = useState<{ url: string; name: string } | null>(null)
+  const [descriptionPrompt, setDescriptionPrompt] = useState<DescriptionPromptId>(
+    DEFAULT_DESCRIPTION_PROMPT_ID,
+  )
+  const uploadBusy = uploadPhase !== 'idle'
 
   useEffect(() => {
     return () => {
@@ -695,6 +735,14 @@ function MuseumAddArtwork({
 
       <div className="add-page">
         <h1>Add Images to your Gallery</h1>
+        <div className="upload-context-panel">
+          <p className="section-title">Description focus</p>
+          <DescriptionPromptChooser
+            value={descriptionPrompt}
+            onChange={setDescriptionPrompt}
+            disabled={uploadBusy}
+          />
+        </div>
         <label className="upload-zone">
           <span className="upload-zone__title">Drag or click to upload images</span>
           <span className="upload-zone__hint">Select one or multiple photos</span>
@@ -752,7 +800,7 @@ function MuseumAddArtwork({
                     setUploadProgress({ current: i * 2 + 1, total: totalSteps })
                     setStatus(uploadStepLabel('identifying', n, total))
                     const result = await supabase.functions.invoke('recognize-artwork', {
-                      body: { artwork_id: artworkId },
+                      body: { artwork_id: artworkId, description_prompt: descriptionPrompt },
                     })
                     if (result.error) {
                       await supabase
@@ -860,6 +908,11 @@ function MuseumArtworkDetail({
   const [caption, setCaption] = useState('')
   const [captionStatus, setCaptionStatus] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [descriptionPrompt, setDescriptionPrompt] = useState<DescriptionPromptId>(
+    DEFAULT_DESCRIPTION_PROMPT_ID,
+  )
+  const [descriptionStatus, setDescriptionStatus] = useState('')
+  const [isRegeneratingDescription, setIsRegeneratingDescription] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -899,6 +952,9 @@ function MuseumArtworkDetail({
       }
       setArtwork(art)
       setCaption(art.caption || '')
+      setDescriptionPrompt(
+        normalizeDescriptionPromptId(art.raw_ai?.description_prompt) as DescriptionPromptId,
+      )
       setStatus(
         art.status === 'error'
           ? `Saved, but AI analysis failed: ${art.error_message || 'unknown error'}`
@@ -943,6 +999,40 @@ function MuseumArtworkDetail({
   }
 
   const kicker = [artwork.period, artwork.date_text].filter(Boolean).join(' · ').toUpperCase()
+  const regenerateDescription = async () => {
+    const db = supabase
+    if (!db || !artwork || isRegeneratingDescription) return
+    setIsRegeneratingDescription(true)
+    setDescriptionStatus('Updating description…')
+    await db
+      .from('artworks')
+      .update({ status: 'pending', error_message: null })
+      .eq('id', artwork.id)
+    const result = await db.functions.invoke('recognize-artwork', {
+      body: { artwork_id: artwork.id, description_prompt: descriptionPrompt },
+    })
+    if (result.error) {
+      setDescriptionStatus(result.error.message || 'Description update failed.')
+      await db
+        .from('artworks')
+        .update({
+          status: 'error',
+          error_message: result.error.message || 'Description update failed.',
+        })
+        .eq('id', artwork.id)
+      setIsRegeneratingDescription(false)
+      return
+    }
+    const refreshed = await db.from('artworks').select('*').eq('id', artwork.id).single()
+    if (!refreshed.error && refreshed.data) {
+      setArtwork(refreshed.data as ArtworkDetail)
+      setDescriptionStatus('Description updated.')
+      setStatus('')
+    } else {
+      setDescriptionStatus(refreshed.error?.message || 'Description updated; reload to see it.')
+    }
+    setIsRegeneratingDescription(false)
+  }
 
   return (
     <div className="museum-classic">
@@ -967,7 +1057,25 @@ function MuseumArtworkDetail({
           <p className="artist">{artwork.artist || 'Unknown artist'}</p>
 
           <p className="section-title">Description</p>
+          <div className="description-controls">
+            <DescriptionPromptChooser
+              value={descriptionPrompt}
+              onChange={setDescriptionPrompt}
+              disabled={isRegeneratingDescription}
+            />
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={isRegeneratingDescription}
+              onClick={() => {
+                void regenerateDescription()
+              }}
+            >
+              {isRegeneratingDescription ? 'Updating…' : 'Update Description'}
+            </button>
+          </div>
           <p className="description">{artwork.description || 'No description available.'}</p>
+          {descriptionStatus ? <p className="page-status">{descriptionStatus}</p> : null}
 
           <div className="meta-grid">
             {[

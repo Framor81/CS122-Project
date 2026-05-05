@@ -1149,6 +1149,66 @@
   color: var(--text);
 }
 
+.museum-classic .upload-context-panel {
+  margin-top: 28px;
+  text-align: left;
+}
+
+.museum-classic .upload-context-panel .section-title {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.museum-classic .description-prompt-chooser {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.museum-classic .description-prompt-option {
+  min-height: 86px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.museum-classic .description-prompt-option:hover,
+.museum-classic .description-prompt-option.is-active {
+  border-color: var(--gold);
+  color: var(--text);
+  background: rgba(198, 158, 74, 0.08);
+}
+
+.museum-classic .description-prompt-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.museum-classic .description-prompt-option__label,
+.museum-classic .description-prompt-option__hint {
+  display: block;
+}
+
+.museum-classic .description-prompt-option__label {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.museum-classic .description-prompt-option__hint {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
 .museum-classic .upload-progress-card {
   margin-top: 24px;
 }
@@ -1219,6 +1279,20 @@
 .museum-classic .detail-page .description {
   color: var(--text);
   line-height: 1.7;
+}
+
+.museum-classic .detail-page .description-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.museum-classic .detail-page .description-controls .description-prompt-chooser {
+  margin-top: 0;
+}
+
+.museum-classic .detail-page .description-controls .btn {
+  align-self: flex-start;
 }
 
 .museum-classic .detail-page .meta-grid {
@@ -1315,6 +1389,14 @@
   }
   .museum-classic .login-card {
     padding: 40px 28px;
+  }
+  .museum-classic .add-page,
+  .museum-classic .detail-page {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .museum-classic .description-prompt-chooser {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

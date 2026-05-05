@@ -21,6 +21,10 @@ import {
   normalizeArtworkThemes,
   THEMES_PROMPT_SECTION,
 } from "./artworkThemes.js";
+import {
+  getDescriptionPromptOption,
+  normalizeDescriptionPromptId,
+} from "./descriptionPrompts.js";
 
 /** Reinforces exact spelling — same strings as ARTWORK_THEME_OPTIONS / THEMES_PROMPT_SECTION. */
 const THEME_ENUM_INLINE = ARTWORK_THEME_OPTIONS.join(", ");
@@ -46,7 +50,9 @@ function json(body: unknown, status = 200) {
   });
 }
 
-const PROMPT = `You are an expert art historian analyzing a photograph of an artwork
+function buildPrompt(descriptionPromptId: string) {
+  const descriptionPrompt = getDescriptionPromptOption(descriptionPromptId);
+  return `You are an expert art historian analyzing a photograph of an artwork
 taken inside a museum. Identify the artwork if you can.
 
 ${THEMES_PROMPT_SECTION}
@@ -69,20 +75,16 @@ Respond with ONLY a JSON object (no prose, no markdown fences) matching this sha
   "confidence": "high" | "medium" | "low"
 }
 
-For the "description" field: write 2–4 sentences of art-historical context — the
-artist's background and intent, what makes this work significant, its cultural or
-historical moment, and any underlying message or symbolism. Do NOT describe the
-visual contents of the image (colors, shapes, what is literally depicted). Write
-as if the viewer is already looking at the painting and wants to understand it
-more deeply. If the artwork cannot be identified, write what little historical or
-stylistic context can be inferred from the style, period, and subject matter.
+${descriptionPrompt.instruction}
 
 If you cannot identify the artwork, still return the JSON but set title/artist/etc.
 to null.
 Never return prose outside the JSON.`;
+}
 
 interface RecognizePayload {
   artwork_id: string;
+  description_prompt: string;
 }
 
 function logError(label: string, err: unknown, context?: Record<string, unknown>) {
@@ -130,7 +132,10 @@ Deno.serve(async (req) => {
   if (!artworkId || typeof artworkId !== "string") {
     return json({ error: "artwork_id required" }, 400);
   }
-  const payload: RecognizePayload = { artwork_id: artworkId };
+  const payload: RecognizePayload = {
+    artwork_id: artworkId,
+    description_prompt: normalizeDescriptionPromptId(payloadRoot.description_prompt),
+  };
   if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY.trim().length < 10) {
     return json({ error: "server misconfigured", detail: "OPENROUTER_API_KEY missing/invalid" }, 500);
   }
@@ -230,7 +235,7 @@ Deno.serve(async (req) => {
                   url: `data:${mediaType};base64,${base64}`,
                 },
               },
-              { type: "text", text: PROMPT },
+              { type: "text", text: buildPrompt(payload.description_prompt) },
             ],
           },
         ],
@@ -417,6 +422,7 @@ Deno.serve(async (req) => {
       ...parsed,
       themes,
       themes_from_model: parsed.themes,
+      description_prompt: payload.description_prompt,
     });
 
     const update = {
