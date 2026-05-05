@@ -63,11 +63,6 @@ function SessionExperience({
 }) {
   const [resolvedHostUserId, setResolvedHostUserId] = useState('')
   const autoFollowDisabledRef = useRef(false)
-  const prevSessionCodeRef = useRef(sessionCode)
-  if (prevSessionCodeRef.current !== sessionCode) {
-    prevSessionCodeRef.current = sessionCode
-    autoFollowDisabledRef.current = false
-  }
   const sharedMuseum = useSharedMuseumMap(userId, sessionCode)
   const multiplayer = useMultiplayer(displayName, sessionCode, {
     userId,
@@ -80,6 +75,10 @@ function SessionExperience({
     connectedUserIds: multiplayer.connectedSessionUserIds,
     onHostUserIdResolved: setResolvedHostUserId,
   })
+
+  useEffect(() => {
+    autoFollowDisabledRef.current = false
+  }, [sessionCode])
 
   useEffect(() => {
     if (autoFollowDisabledRef.current) return
@@ -255,7 +254,7 @@ function MuseumSession({
         total={artworkReadiness.total}
         artworksLoading={sessionArtworks.loading}
       />
-      {museumReady && !combatEnabled ? <MuseumTutorialOverlay sessionCode={sessionCode} /> : null}
+      {museumReady && !combatEnabled ? <MuseumTutorialOverlay key={sessionCode} sessionCode={sessionCode} /> : null}
       {!combatEnabled ? <PlaqueInspectOverlay /> : null}
       <Canvas
         dpr={[1, 1.5]}

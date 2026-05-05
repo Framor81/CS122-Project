@@ -56,9 +56,7 @@ export function SessionLobby({
     return `${window.location.origin}/${sessionCode}`
   }, [sessionCode])
 
-  const enterDisabled =
-    sessionArtworks.loading ||
-    (!sessionArtworks.isHost && !multiplayer.museumSessionLive)
+  const enterDisabled = sessionArtworks.loading
 
   const copyLink = async () => {
     try {
@@ -213,11 +211,9 @@ export function SessionLobby({
               >
                 Enter the museum →
               </button>
-              {!sessionArtworks.loading &&
-              !sessionArtworks.isHost &&
-              !multiplayer.museumSessionLive ? (
+              {!sessionArtworks.loading && !sessionArtworks.isHost && !multiplayer.museumSessionLive ? (
                 <p className="m3d-enter-museum-hint" role="status">
-                  The host opens the museum first — you&apos;ll be able to follow once they enter.
+                  You can enter now, or wait to auto-join when the host enters.
                 </p>
               ) : null}
             </section>

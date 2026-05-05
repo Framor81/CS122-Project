@@ -54,17 +54,21 @@ export function useSessionArtworks({
   const [scope, setScopeState] = useState('host')
   const [hostUserId, setHostUserId] = useState('')
   const hostResolvedCbRef = useRef(onHostUserIdResolved)
-  hostResolvedCbRef.current = onHostUserIdResolved
+  const knownPoolUserIdsRef = useRef([])
+
+  useEffect(() => {
+    hostResolvedCbRef.current = onHostUserIdResolved
+  }, [onHostUserIdResolved])
 
   const isHost = Boolean(userId && hostUserId && userId === hostUserId)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ silent = false } = {}) => {
     if (!supabase || !sessionCode || !userId) {
       setLoading(false)
       setArtworks([])
       return
     }
-    setLoading(true)
+    if (!silent) setLoading(true)
     setError('')
 
     let nextHost = ''
@@ -118,7 +122,14 @@ export function useSessionArtworks({
           .filter(Boolean),
       ),
     ]
-    const poolUserIdsForAllScope = fromPresence.length > 0 ? fromPresence : fallbackIds
+    if (fromPresence.length > 0) {
+      knownPoolUserIdsRef.current = fromPresence
+    }
+    const rememberedIds = Array.isArray(knownPoolUserIdsRef.current)
+      ? knownPoolUserIdsRef.current
+      : []
+    const poolUserIdsForAllScope =
+      fromPresence.length > 0 ? fromPresence : rememberedIds.length > 0 ? rememberedIds : fallbackIds
 
     const query = supabase
       .from('artworks')
@@ -160,7 +171,7 @@ export function useSessionArtworks({
       .filter((art) => art.imageUrl)
       .sort((a, b) => String(a.id).localeCompare(String(b.id)))
     setArtworks(final)
-    setLoading(false)
+    if (!silent) setLoading(false)
   }, [sessionCode, userId, connectedUserIds])
 
   useEffect(() => {
@@ -179,14 +190,14 @@ export function useSessionArtworks({
         (payload) => {
           const row = payload?.new
           if (!row || row.session_code !== sessionCode) return
-          load()
+          load({ silent: true })
         },
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'artworks' },
         () => {
-          load()
+          load({ silent: true })
         },
       )
       .subscribe()

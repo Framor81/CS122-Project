@@ -160,6 +160,34 @@ io.on('connection', (socket) => {
 
   socket.once('join', onJoin)
 
+  socket.on('museumPresence', (payload) => {
+    const sessionCode = socketSession[id] || DEFAULT_SESSION
+    const uid = socketUserId[id] || ''
+    const inMuseum = Boolean(payload?.inMuseum)
+    const declaredHostUserId = sanitizeUserId(payload?.hostUserId)
+    const declaredUserId = sanitizeUserId(payload?.userId)
+
+    if (declaredHostUserId && declaredUserId && declaredHostUserId === declaredUserId) {
+      if (!sessionHostUserId[sessionCode]) {
+        sessionHostUserId[sessionCode] = declaredHostUserId
+      }
+    }
+
+    if (!inMuseum) return
+
+    const hid = getSessionHostUserId(sessionCode)
+    if (hid) {
+      if (!uid || uid !== hid) return
+    } else if (sessionFirstSocket[sessionCode] !== id) {
+      return
+    }
+
+    if (!sessionMuseumLive[sessionCode]) {
+      sessionMuseumLive[sessionCode] = true
+      io.to(sessionCode).emit('museumSessionLive', { live: true })
+    }
+  })
+
   socket.on('favoritesStartRound', () => {
     const sessionCode = socketSession[id] || DEFAULT_SESSION
     const uid = socketUserId[id] || ''

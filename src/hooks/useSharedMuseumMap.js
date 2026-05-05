@@ -86,8 +86,11 @@ export function useSharedMuseumMap(userId, sessionCode) {
         (payload) => {
           const row = payload.new
           if (!row || row.session_code !== sessionCode) return
-          setMuseumMap(
-            normalizeMap({ seedText: row.seed_text, gridSize: row.grid_size }),
+          const next = normalizeMap({ seedText: row.seed_text, gridSize: row.grid_size })
+          setMuseumMap((prev) =>
+            prev.seedText === next.seedText && prev.gridSize === next.gridSize
+              ? prev
+              : next,
           )
         },
       )

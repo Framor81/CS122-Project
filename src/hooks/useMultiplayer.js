@@ -31,6 +31,16 @@ export function useMultiplayer(displayName, sessionCode, opts = {}) {
   const [sessionCloseAt, setSessionCloseAt] = useState(0)
   const socketRef = useRef(null)
   const lastSendRef = useRef(0)
+  const hostUserIdRef = useRef(hostUserId)
+  const inMuseumRef = useRef(inMuseum)
+
+  useEffect(() => {
+    hostUserIdRef.current = hostUserId
+  }, [hostUserId])
+
+  useEffect(() => {
+    inMuseumRef.current = inMuseum
+  }, [inMuseum])
 
   useEffect(() => {
     const name = typeof displayName === 'string' ? displayName.trim() : ''
@@ -52,8 +62,8 @@ export function useMultiplayer(displayName, sessionCode, opts = {}) {
         name,
         sessionCode: room,
         userId,
-        hostUserId,
-        inMuseum,
+        hostUserId: hostUserIdRef.current,
+        inMuseum: inMuseumRef.current,
       })
     }
 
@@ -303,7 +313,17 @@ export function useMultiplayer(displayName, sessionCode, opts = {}) {
       setFavoritesPicksByUser({})
       setConnectedSessionUserIds([])
     }
-  }, [displayName, sessionCode, userId, hostUserId, inMuseum])
+  }, [displayName, sessionCode, userId])
+
+  useEffect(() => {
+    const socket = socketRef.current
+    if (!socket?.connected) return
+    socket.emit('museumPresence', {
+      inMuseum,
+      hostUserId,
+      userId,
+    })
+  }, [inMuseum, hostUserId, userId])
 
   useEffect(() => {
     const timer = window.setInterval(() => {

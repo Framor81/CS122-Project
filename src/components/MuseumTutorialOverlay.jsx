@@ -19,15 +19,6 @@ export function MuseumTutorialOverlay({ sessionCode = '' }) {
     }
   })
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      setVisible(!window.localStorage.getItem(storageKey))
-    } catch {
-      setVisible(true)
-    }
-  }, [storageKey])
-
   const dismiss = useCallback(() => {
     try {
       window.localStorage.setItem(storageKey, '1')
