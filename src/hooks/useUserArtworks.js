@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient.js'
 import { debugReport } from '../lib/debugBus.js'
 
@@ -19,6 +19,7 @@ async function attachSignedUrls(rows) {
 }
 
 export function useUserArtworks(userId) {
+  const subscriptionId = useId()
   const [resolvedUserId, setResolvedUserId] = useState(userId || null)
   const [artworks, setArtworks] = useState([])
   const [loading, setLoading] = useState(Boolean(supabase && userId))
@@ -87,7 +88,7 @@ export function useUserArtworks(userId) {
     const ownerId = userId || resolvedUserId
     if (!supabase || !ownerId) return undefined
     const channel = supabase
-      .channel(`museum-artworks-${ownerId}`)
+      .channel(`museum-artworks-${ownerId}-${subscriptionId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'artworks', filter: `user_id=eq.${ownerId}` },
@@ -100,7 +101,7 @@ export function useUserArtworks(userId) {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [loadArtworks, resolvedUserId, userId])
+  }, [loadArtworks, resolvedUserId, subscriptionId, userId])
 
   return useMemo(
     () => ({ artworks, loading, error, reload: loadArtworks }),

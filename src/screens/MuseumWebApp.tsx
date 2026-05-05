@@ -69,6 +69,12 @@ function uploadContentTypeFor(file: File): string {
   return EXTENSION_TO_MIME[extensionFromName(file.name)] || 'application/octet-stream'
 }
 
+function uploadStepLabel(phase: 'uploading' | 'identifying', index: number, total: number) {
+  const verb = phase === 'uploading' ? 'Uploading' : 'Identifying'
+  if (total === 1) return `${verb} image…`
+  return `${verb} ${index} of ${total}…`
+}
+
 /* -------------------- Welcome (unauthenticated home) -------------------- */
 
 function MuseumWelcome({ onNavigate }: { onNavigate: (path: string) => void }) {
@@ -269,11 +275,15 @@ function MuseumHome({
   onNavigate,
   onSignOut,
   onNavigate3D,
+  canEnter3D,
+  museumEntryLoading,
 }: {
   displayName: string
   onNavigate: (path: string) => void
   onSignOut: () => void
   onNavigate3D: () => void
+  canEnter3D: boolean
+  museumEntryLoading: boolean
 }) {
   return (
     <div className="museum-classic homepage-1-1">
@@ -283,6 +293,8 @@ function MuseumHome({
         onNavigate={onNavigate}
         onSignOut={onSignOut}
         onNavigate3D={onNavigate3D}
+        canEnter3D={canEnter3D}
+        museumEntryHint="Upload at least one artwork before entering the 3D museum."
       />
 
       <section className="hero">
@@ -310,18 +322,28 @@ function MuseumHome({
           </article>
         </a>
         <a
-          className="prototype-link"
+          className={`prototype-link ${!canEnter3D ? 'is-disabled' : ''}`}
           href="#"
           onClick={(e) => {
             e.preventDefault()
+            if (!canEnter3D) {
+              onNavigate('/add-artwork')
+              return
+            }
             onNavigate3D()
           }}
         >
           <article className="feature-card">
             <span className="card-kicker">Immersive Experience</span>
             <h2>3D Museum</h2>
-            <p>Walk through a virtual gallery of your saved works.</p>
-            <span className="card-action">ENTER →</span>
+            <p>
+              {canEnter3D
+                ? 'Walk through a virtual gallery of your saved works.'
+                : 'Upload artwork first so your museum has something to show.'}
+            </p>
+            <span className="card-action">
+              {museumEntryLoading ? 'CHECKING COLLECTION...' : canEnter3D ? 'ENTER ->' : 'UPLOAD IMAGES ->'}
+            </span>
           </article>
         </a>
       </section>
@@ -337,12 +359,14 @@ function MuseumCollection({
   onNavigate,
   onSignOut,
   onNavigate3D,
+  canEnter3D,
 }: {
   userId: string
   displayName: string
   onNavigate: (path: string) => void
   onSignOut: () => void
   onNavigate3D: () => void
+  canEnter3D: boolean
 }) {
   const { artworks, loading, error, reload } = useUserArtworks(userId)
   const typedArtworks = artworks as Array<{
@@ -452,6 +476,8 @@ function MuseumCollection({
         onNavigate={onNavigate}
         onSignOut={onSignOut}
         onNavigate3D={onNavigate3D}
+        canEnter3D={canEnter3D || typedArtworks.length > 0}
+        museumEntryHint="Upload at least one artwork before entering the 3D museum."
       />
 
       <div className="collection-page">
@@ -494,6 +520,12 @@ function MuseumCollection({
         ) : null}
 
         {loading ? <p className="page-status">Loading your collection…</p> : null}
+        {reanalyzeBusy && reanalyzeProgress ? (
+          <p className="page-status identify-gallery-status">
+            <span className="identify-spinner" aria-hidden="true" />
+            Refreshing tags {reanalyzeProgress.current}/{reanalyzeProgress.total}…
+          </p>
+        ) : null}
         {error ? <p className="page-status" data-kind="error">{error}</p> : null}
         {!loading && !error && typedArtworks.length === 0 ? (
           <div className="collection-empty">
@@ -530,7 +562,14 @@ function MuseumCollection({
                 />
                 <div className="meta">
                   <p className="title">
-                    {art.title || (art.status === 'pending' ? 'Identifying…' : 'Untitled')}
+                    {art.status === 'pending' ? (
+                      <span className="art-card-pending">
+                        <span className="identify-spinner" aria-hidden="true" />
+                        Identifying…
+                      </span>
+                    ) : (
+                      art.title || 'Untitled'
+                    )}
                   </p>
                   <p className="subtitle">
                     {art.artist || 'Unknown'}
@@ -565,14 +604,25 @@ function MuseumAddArtwork({
   onNavigate,
   onSignOut,
   onNavigate3D,
+  canEnter3D,
 }: {
   userId: string
   displayName: string
   onNavigate: (path: string) => void
   onSignOut: () => void
   onNavigate3D: () => void
+  canEnter3D: boolean
 }) {
   const [status, setStatus] = useState('')
+  const [uploadPhase, setUploadPhase] = useState<'idle' | 'uploading' | 'identifying'>('idle')
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
+  const [uploadPreview, setUploadPreview] = useState<{ url: string; name: string } | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (uploadPreview) URL.revokeObjectURL(uploadPreview.url)
+    }
+  }, [uploadPreview])
 
   return (
     <div className="museum-classic">
@@ -582,6 +632,8 @@ function MuseumAddArtwork({
         onNavigate={onNavigate}
         onSignOut={onSignOut}
         onNavigate3D={onNavigate3D}
+        canEnter3D={canEnter3D}
+        museumEntryHint="Finish uploading artwork before entering the 3D museum."
       />
 
       <div className="add-page">
@@ -600,13 +652,21 @@ function MuseumAddArtwork({
                 e.target.value = ''
                 if (files.length === 0 || !supabase) return
                 const total = files.length
+                const totalSteps = total * 2
                 const ids: string[] = []
                 const failures: string[] = []
                 try {
                   for (let i = 0; i < files.length; i += 1) {
                     const file = files[i]
                     const n = i + 1
-                    setStatus(`Uploading ${n}/${total}…`)
+                    const previewUrl = URL.createObjectURL(file)
+                    setUploadPreview((previous) => {
+                      if (previous) URL.revokeObjectURL(previous.url)
+                      return { url: previewUrl, name: file.name }
+                    })
+                    setUploadPhase('uploading')
+                    setUploadProgress({ current: i * 2, total: totalSteps })
+                    setStatus(uploadStepLabel('uploading', n, total))
                     const ext = extensionFromName(file.name) || 'jpg'
                     const path = `${userId}/${crypto.randomUUID()}.${ext}`
                     const upload = await supabase.storage
@@ -631,7 +691,9 @@ function MuseumAddArtwork({
 
                     const artworkId = created.data.id
                     ids.push(artworkId)
-                    setStatus(`Identifying ${n}/${total}…`)
+                    setUploadPhase('identifying')
+                    setUploadProgress({ current: i * 2 + 1, total: totalSteps })
+                    setStatus(uploadStepLabel('identifying', n, total))
                     const result = await supabase.functions.invoke('recognize-artwork', {
                       body: { artwork_id: artworkId },
                     })
@@ -645,7 +707,15 @@ function MuseumAddArtwork({
                         })
                         .eq('id', artworkId)
                     }
+                    setUploadProgress({ current: i * 2 + 2, total: totalSteps })
                   }
+
+                  setUploadPhase('idle')
+                  setUploadProgress(null)
+                  setUploadPreview((previous) => {
+                    if (previous) URL.revokeObjectURL(previous.url)
+                    return null
+                  })
 
                   if (ids.length === 0) {
                     setStatus(
@@ -671,13 +741,40 @@ function MuseumAddArtwork({
                     onNavigate('/collection')
                   }
                 } catch (err) {
+                  setUploadPhase('idle')
+                  setUploadProgress(null)
+                  setUploadPreview((previous) => {
+                    if (previous) URL.revokeObjectURL(previous.url)
+                    return null
+                  })
                   setStatus(err instanceof Error ? err.message : 'Upload failed.')
                 }
               })()
             }}
           />
         </label>
-        {status ? <p className="page-status">{status}</p> : null}
+        {uploadPhase !== 'idle' && uploadProgress ? (
+          <div className="identify-status upload-progress-card">
+            {uploadPreview ? (
+              <div
+                className="upload-progress-preview"
+                style={{ backgroundImage: `url("${uploadPreview.url}")` }}
+                aria-label={`Processing ${uploadPreview.name}`}
+              />
+            ) : null}
+            <p className="page-status">{status}</p>
+            <div className="identify-progress-wrap">
+              <div
+                className="identify-progress-bar"
+                style={{
+                  width: `${Math.min(100, Math.max(0, (uploadProgress.current / uploadProgress.total) * 100))}%`,
+                }}
+              />
+            </div>
+          </div>
+        ) : status ? (
+          <p className="page-status">{status}</p>
+        ) : null}
       </div>
     </div>
   )
@@ -690,12 +787,14 @@ function MuseumArtworkDetail({
   onNavigate,
   onSignOut,
   onNavigate3D,
+  canEnter3D,
   artworkId,
 }: {
   displayName: string
   onNavigate: (path: string) => void
   onSignOut: () => void
   onNavigate3D: () => void
+  canEnter3D: boolean
   artworkId: string | null
 }) {
   const [status, setStatus] = useState('Loading…')
@@ -703,6 +802,7 @@ function MuseumArtworkDetail({
   const [imageUrl, setImageUrl] = useState('')
   const [caption, setCaption] = useState('')
   const [captionStatus, setCaptionStatus] = useState('')
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -726,12 +826,14 @@ function MuseumArtworkDetail({
         return
       }
       if (art.status === 'pending') {
-        setStatus('AI is still analyzing this image…')
+        setIsAnalyzing(true)
+        setStatus('AI is analyzing this image…')
         for (let i = 0; i < 30; i += 1) {
           await new Promise((r) => window.setTimeout(r, 1500))
           art = await load()
           if (!art || art.status !== 'pending') break
         }
+        setIsAnalyzing(false)
       }
 
       if (!art) {
@@ -759,12 +861,21 @@ function MuseumArtworkDetail({
           onNavigate={onNavigate}
           onSignOut={onSignOut}
           onNavigate3D={onNavigate3D}
+          canEnter3D={canEnter3D}
+          museumEntryHint="Upload at least one artwork before entering the 3D museum."
         />
         <div className="add-page">
-          <p className="page-status">{status}</p>
+          {isAnalyzing ? (
+            <div className="identify-status">
+              <p className="page-status">{status}</p>
+            </div>
+          ) : (
+            <p className="page-status">{status}</p>
+          )}
           <button
             type="button"
             className="btn"
+            style={{ marginTop: '24px' }}
             onClick={() => onNavigate('/collection')}
           >
             Back to Collection
@@ -784,6 +895,8 @@ function MuseumArtworkDetail({
         onNavigate={onNavigate}
         onSignOut={onSignOut}
         onNavigate3D={onNavigate3D}
+        canEnter3D={canEnter3D}
+        museumEntryHint="Upload at least one artwork before entering the 3D museum."
       />
 
       <div className="detail-page">
@@ -870,6 +983,7 @@ function MuseumArtworkDetail({
 /* -------------------- Router shell -------------------- */
 
 export function MuseumWebApp({ auth, displayName, onSignedInName, onNavigate3D }: Props) {
+  const entryArtworks = useUserArtworks(auth.user?.id || null)
   const [locationState, setLocationState] = useState(() => ({
     pathname: window.location.pathname,
     search: window.location.search,
@@ -911,6 +1025,14 @@ export function MuseumWebApp({ auth, displayName, onSignedInName, onNavigate3D }
     await auth.signOut()
     navigate('/home')
   }, [auth, navigate])
+  const canEnter3D = Boolean(auth.user && entryArtworks.artworks.length > 0)
+  const guardedNavigate3D = useCallback(() => {
+    if (!canEnter3D) {
+      navigate('/add-artwork')
+      return
+    }
+    onNavigate3D()
+  }, [canEnter3D, navigate, onNavigate3D])
 
   useEffect(() => {
     const needsAuth = route === '/collection' || route === '/add-artwork' || route === '/artwork'
@@ -934,7 +1056,9 @@ export function MuseumWebApp({ auth, displayName, onSignedInName, onNavigate3D }
           displayName={displayName}
           onNavigate={navigate}
           onSignOut={handleSignOut}
-          onNavigate3D={onNavigate3D}
+          onNavigate3D={guardedNavigate3D}
+          canEnter3D={canEnter3D}
+          museumEntryLoading={entryArtworks.loading}
         />
       )
     }
@@ -952,7 +1076,8 @@ export function MuseumWebApp({ auth, displayName, onSignedInName, onNavigate3D }
         displayName={displayName}
         onNavigate={navigate}
         onSignOut={handleSignOut}
-        onNavigate3D={onNavigate3D}
+        onNavigate3D={guardedNavigate3D}
+        canEnter3D={canEnter3D}
       />
     )
   }
@@ -964,7 +1089,8 @@ export function MuseumWebApp({ auth, displayName, onSignedInName, onNavigate3D }
         displayName={displayName}
         onNavigate={navigate}
         onSignOut={handleSignOut}
-        onNavigate3D={onNavigate3D}
+        onNavigate3D={guardedNavigate3D}
+        canEnter3D={canEnter3D}
       />
     )
   }
@@ -975,7 +1101,8 @@ export function MuseumWebApp({ auth, displayName, onSignedInName, onNavigate3D }
         displayName={displayName}
         onNavigate={navigate}
         onSignOut={handleSignOut}
-        onNavigate3D={onNavigate3D}
+        onNavigate3D={guardedNavigate3D}
+        canEnter3D={canEnter3D}
         artworkId={artworkId}
       />
     )
@@ -988,7 +1115,9 @@ export function MuseumWebApp({ auth, displayName, onSignedInName, onNavigate3D }
         activeRoute="/home"
         onNavigate={navigate}
         onSignOut={handleSignOut}
-        onNavigate3D={onNavigate3D}
+        onNavigate3D={guardedNavigate3D}
+        canEnter3D={canEnter3D}
+        museumEntryHint="Upload at least one artwork before entering the 3D museum."
       />
       <div className="add-page">
         <h1>Page not found</h1>

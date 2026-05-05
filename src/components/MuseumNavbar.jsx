@@ -10,6 +10,8 @@ export function MuseumNavbar({
   onNavigate,
   onSignOut,
   onNavigate3D,
+  canEnter3D = true,
+  museumEntryHint = '',
   className = '',
 }) {
   return (
@@ -34,8 +36,13 @@ export function MuseumNavbar({
             COLLECTION
           </button>
           {typeof onNavigate3D === 'function' ? (
-            <button type="button" onClick={() => onNavigate3D()}>
-              3D MUSEUM
+            <button
+              type="button"
+              disabled={!canEnter3D}
+              title={!canEnter3D ? museumEntryHint || 'Upload artwork before entering the 3D museum.' : undefined}
+              onClick={() => onNavigate3D()}
+            >
+              {canEnter3D ? '3D MUSEUM' : 'UPLOAD ART FIRST'}
             </button>
           ) : null}
         </div>

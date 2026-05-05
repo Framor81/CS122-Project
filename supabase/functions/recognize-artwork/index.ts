@@ -42,9 +42,7 @@ function json(body: unknown, status = 200) {
 }
 
 const PROMPT = `You are an expert art historian analyzing a photograph of an artwork
-taken inside a museum. Identify the artwork if you can, and describe it in a way
-that gives the viewer rich context: the artist, period, themes, and a short
-narrative description.
+taken inside a museum. Identify the artwork if you can.
 
 ${THEMES_PROMPT_SECTION}
 
@@ -63,8 +61,16 @@ Respond with ONLY a JSON object (no prose, no markdown fences) matching this sha
   "confidence": "high" | "medium" | "low"
 }
 
+For the "description" field: write 2–4 sentences of art-historical context — the
+artist's background and intent, what makes this work significant, its cultural or
+historical moment, and any underlying message or symbolism. Do NOT describe the
+visual contents of the image (colors, shapes, what is literally depicted). Write
+as if the viewer is already looking at the painting and wants to understand it
+more deeply. If the artwork cannot be identified, write what little historical or
+stylistic context can be inferred from the style, period, and subject matter.
+
 If you cannot identify the artwork, still return the JSON but set title/artist/etc.
-to null and describe what you see and apply themes from the allowed list only.
+to null.
 Never return prose outside the JSON.`;
 
 interface RecognizePayload {
