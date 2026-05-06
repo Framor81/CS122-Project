@@ -906,7 +906,10 @@ function MuseumArtworkDetail({
   const [artwork, setArtwork] = useState<ArtworkDetail | null>(null)
   const [imageUrl, setImageUrl] = useState('')
   const [caption, setCaption] = useState('')
+  const [editableTitle, setEditableTitle] = useState('')
+  const [editableArtist, setEditableArtist] = useState('')
   const [captionStatus, setCaptionStatus] = useState('')
+  const [titleStatus, setTitleStatus] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [descriptionPrompt, setDescriptionPrompt] = useState<DescriptionPromptId>(
     DEFAULT_DESCRIPTION_PROMPT_ID,
@@ -952,6 +955,8 @@ function MuseumArtworkDetail({
       }
       setArtwork(art)
       setCaption(art.caption || '')
+      setEditableTitle(art.title || '')
+      setEditableArtist(art.artist || '')
       setDescriptionPrompt(
         normalizeDescriptionPromptId(art.raw_ai?.description_prompt) as DescriptionPromptId,
       )
@@ -999,6 +1004,8 @@ function MuseumArtworkDetail({
   }
 
   const kicker = [artwork.period, artwork.date_text].filter(Boolean).join(' · ').toUpperCase()
+  const normalizedTitle = (artwork.title || '').trim()
+  const isUntitled = !normalizedTitle || normalizedTitle.toLowerCase() === 'untitled'
   const regenerateDescription = async () => {
     const db = supabase
     if (!db || !artwork || isRegeneratingDescription) return
@@ -1055,6 +1062,57 @@ function MuseumArtworkDetail({
           {kicker ? <p className="eyebrow">{kicker}</p> : null}
           <h1>{artwork.title || 'Untitled'}</h1>
           <p className="artist">{artwork.artist || 'Unknown artist'}</p>
+          {isUntitled ? (
+            <>
+              <p className="section-title">Set Title & Artist</p>
+              <input
+                value={editableTitle}
+                onChange={(e) => setEditableTitle(e.target.value)}
+                placeholder="Enter a title"
+              />
+              <input
+                value={editableArtist}
+                onChange={(e) => setEditableArtist(e.target.value)}
+                placeholder="Enter artist (optional)"
+              />
+              <div className="detail-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    void (async () => {
+                      const db = supabase
+                      if (!db) return
+                      const nextTitle = editableTitle.trim()
+                      const nextArtist = editableArtist.trim()
+                      if (!nextTitle) {
+                        setTitleStatus('Please enter a title.')
+                        return
+                      }
+                      setTitleStatus('Saving title and artist…')
+                      const result = await db
+                        .from('artworks')
+                        .update({ title: nextTitle, artist: nextArtist || null })
+                        .eq('id', artwork.id)
+                        .select('*')
+                        .single()
+                      if (result.error || !result.data) {
+                        setTitleStatus(result.error?.message || 'Could not save title.')
+                        return
+                      }
+                      setArtwork(result.data as ArtworkDetail)
+                      setEditableTitle(result.data.title || nextTitle)
+                      setEditableArtist(result.data.artist || nextArtist)
+                      setTitleStatus('Title and artist saved.')
+                    })()
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+              {titleStatus ? <p className="page-status">{titleStatus}</p> : null}
+            </>
+          ) : null}
 
           <p className="section-title">Description</p>
           <div className="description-controls">

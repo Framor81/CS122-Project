@@ -177,13 +177,14 @@ function makeId(run, idx, suffix = '') {
 
 function getPlaqueCopy(art) {
   if (!art) {
-    return { title: 'Untitled', artist: '', description: '' }
+    return { title: 'Untitled', artist: '', description: '', caption: '' }
   }
   const title =
     (art.title || '').trim() || (art.status === 'pending' ? 'Identifying…' : 'Untitled')
   const artist = (art.artist || '').trim()
   const description = (art.description || '').trim()
-  return { title, artist, description }
+  const caption = (art.caption || '').trim()
+  return { title, artist, description, caption }
 }
 
 function plaqueTextFromCopy(copy) {
@@ -324,6 +325,7 @@ function placeOnRun(run, art, opts) {
       title: copy.title,
       artist: copy.artist,
       description: copy.description,
+      caption: copy.caption,
     },
     run: {
       axis: run.axis,

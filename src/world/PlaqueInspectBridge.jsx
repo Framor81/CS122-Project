@@ -5,6 +5,7 @@ import {
   closePlaqueInspectPanel,
   openPlaqueInspectPanel,
   setPlaqueInspectFocus,
+  togglePlaqueBodyMode,
 } from './plaqueInspectStore.js'
 import { usePlaqueTargetsRef } from './usePlaqueTargetsRef.js'
 
@@ -77,7 +78,8 @@ export function PlaqueInspectBridge({ chatOpen = false, combatEnabled = false })
         ((best.description && best.description.trim()) ||
           (best.title && best.title.trim() && best.title !== 'Untitled')),
     )
-    const key = best ? `${best.id}|${canOpen ? 1 : 0}` : ''
+    const canToggleCaption = Boolean(best && best.caption && best.caption.trim())
+    const key = best ? `${best.id}|${canOpen ? 1 : 0}|${canToggleCaption ? 1 : 0}` : ''
 
     if (key !== lastFocusKeyRef.current) {
       lastFocusKeyRef.current = key
@@ -87,6 +89,7 @@ export function PlaqueInspectBridge({ chatOpen = false, combatEnabled = false })
         setPlaqueInspectFocus({
           id: best.id,
           canOpen,
+          canToggleCaption,
         })
       }
     }
@@ -108,6 +111,15 @@ export function PlaqueInspectBridge({ chatOpen = false, combatEnabled = false })
         description: desc,
       })
     }
+    const onToggleBody = (event) => {
+      if (event.code !== 'KeyE' || event.repeat) return
+      if (chatOpen || combatEnabled) return
+      const t = focusPayloadRef.current
+      if (!t) return
+      if (!t.caption || !t.caption.trim()) return
+      event.preventDefault()
+      togglePlaqueBodyMode(t.id)
+    }
 
     const onKeyUp = (event) => {
       if (event.code !== 'Escape') return
@@ -115,9 +127,11 @@ export function PlaqueInspectBridge({ chatOpen = false, combatEnabled = false })
     }
 
     window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onToggleBody)
     window.addEventListener('keyup', onKeyUp)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keydown', onToggleBody)
       window.removeEventListener('keyup', onKeyUp)
     }
   }, [chatOpen, combatEnabled])

@@ -2,6 +2,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { Text, useTexture } from '@react-three/drei'
 import * as THREE from 'three'
 import { usePlaqueTargetsRef } from './usePlaqueTargetsRef.js'
+import { usePlaqueBodyModes } from './plaqueInspectStore.js'
 
 const FRAME_COLOR = '#c9a035'
 const PICTURE_FALLBACK_COLOR = '#252525'
@@ -95,12 +96,27 @@ function plaqueTextMountKey(placementId, text) {
 
 function resolvePlaqueCopy(plaque, artwork) {
   if (!artwork) {
-    return { title: 'Untitled', artist: '', description: '' }
+    return { title: 'Untitled', artist: '', description: '', caption: '' }
   }
   const title = ((plaque.title || '').trim() || 'Untitled')
   const artist = (plaque.artist || '').trim()
   const description = (plaque.description || '').trim()
-  return { title, artist, description }
+  const caption = (plaque.caption || '').trim()
+  return { title, artist, description, caption }
+}
+
+function buildPlaqueText(copy, body, mode) {
+  const title = copy.title || 'Untitled'
+  const artist = (copy.artist || '').trim()
+  const showUnknownArtist = mode !== 'caption'
+  const lines = [title]
+  if (artist) {
+    lines.push(artist)
+  } else if (showUnknownArtist) {
+    lines.push('Artist unknown')
+  }
+  if (body) lines.push(body)
+  return lines.join('\n')
 }
 
 function PlaqueMeshText({ position, rotation, plaque, children }) {
@@ -155,12 +171,18 @@ export function Painting({ placement }) {
   const { frame, plaque, artwork } = placement
   const [isReady, setIsReady] = useState(false)
   const targetsRef = usePlaqueTargetsRef()
+  const plaqueBodyModes = usePlaqueBodyModes()
 
   const copy = useMemo(
     () => resolvePlaqueCopy(plaque, artwork),
     [plaque, artwork],
   )
-  const displayText = plaque.text || 'Untitled'
+  const selectedBodyMode = plaqueBodyModes?.[placement.id] || 'description'
+  const bodyText =
+    selectedBodyMode === 'caption'
+      ? copy.caption || copy.description
+      : copy.description || copy.caption
+  const displayText = buildPlaqueText(copy, bodyText, selectedBodyMode)
 
   const innerMaxW = Math.max(0, frame.width - frame.pictureInset * 2)
   const innerMaxH = Math.max(0, frame.height - frame.pictureInset * 2)
@@ -217,6 +239,7 @@ export function Painting({ placement }) {
       title: copy.title,
       artist: copy.artist,
       description: copy.description,
+      caption: copy.caption,
     }
     map.set(id, entry)
     return () => {

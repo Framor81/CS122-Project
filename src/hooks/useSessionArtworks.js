@@ -55,10 +55,15 @@ export function useSessionArtworks({
   const [hostUserId, setHostUserId] = useState('')
   const hostResolvedCbRef = useRef(onHostUserIdResolved)
   const knownPoolUserIdsRef = useRef([])
+  const connectedUserIdsRef = useRef(connectedUserIds)
 
   useEffect(() => {
     hostResolvedCbRef.current = onHostUserIdResolved
   }, [onHostUserIdResolved])
+
+  useEffect(() => {
+    connectedUserIdsRef.current = connectedUserIds
+  }, [connectedUserIds])
 
   const isHost = Boolean(userId && hostUserId && userId === hostUserId)
 
@@ -111,9 +116,10 @@ export function useSessionArtworks({
       hostResolvedCbRef.current(nextHost)
     }
 
+    const connected = connectedUserIdsRef.current
     const fromPresence =
-      Array.isArray(connectedUserIds) && connectedUserIds.length > 0
-        ? [...new Set(connectedUserIds.map((x) => String(x ?? '').trim()).filter(Boolean))]
+      Array.isArray(connected) && connected.length > 0
+        ? [...new Set(connected.map((x) => String(x ?? '').trim()).filter(Boolean))]
         : []
     const fallbackIds = [
       ...new Set(
@@ -134,7 +140,7 @@ export function useSessionArtworks({
     const query = supabase
       .from('artworks')
       .select(
-        'id,user_id,title,artist,period,date_text,medium,dimensions,location_guess,description,themes,image_path,status,updated_at,created_at',
+        'id,user_id,title,artist,period,date_text,medium,dimensions,location_guess,description,caption,themes,image_path,status,updated_at,created_at',
       )
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })
@@ -172,7 +178,7 @@ export function useSessionArtworks({
       .sort((a, b) => String(a.id).localeCompare(String(b.id)))
     setArtworks(final)
     if (!silent) setLoading(false)
-  }, [sessionCode, userId, connectedUserIds])
+  }, [sessionCode, userId])
 
   useEffect(() => {
     queueMicrotask(() => {

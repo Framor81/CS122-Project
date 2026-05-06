@@ -29,6 +29,11 @@ export function PlaqueInspectOverlay() {
         >
           Press <span className="font-semibold text-amber-100/95">F</span> to inspect
           plaque
+          {focus?.canToggleCaption ? (
+            <>
+              {' '}· Press <span className="font-semibold text-amber-100/95">E</span> to toggle caption
+            </>
+          ) : null}
         </div>
       ) : null}
 
