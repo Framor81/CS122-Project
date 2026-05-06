@@ -908,6 +908,7 @@ function MuseumArtworkDetail({
   const [caption, setCaption] = useState('')
   const [editableTitle, setEditableTitle] = useState('')
   const [editableArtist, setEditableArtist] = useState('')
+  const [isEditingMeta, setIsEditingMeta] = useState(false)
   const [captionStatus, setCaptionStatus] = useState('')
   const [titleStatus, setTitleStatus] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -957,6 +958,7 @@ function MuseumArtworkDetail({
       setCaption(art.caption || '')
       setEditableTitle(art.title || '')
       setEditableArtist(art.artist || '')
+      setIsEditingMeta(false)
       setDescriptionPrompt(
         normalizeDescriptionPromptId(art.raw_ai?.description_prompt) as DescriptionPromptId,
       )
@@ -1004,8 +1006,32 @@ function MuseumArtworkDetail({
   }
 
   const kicker = [artwork.period, artwork.date_text].filter(Boolean).join(' · ').toUpperCase()
-  const normalizedTitle = (artwork.title || '').trim()
-  const isUntitled = !normalizedTitle || normalizedTitle.toLowerCase() === 'untitled'
+  const saveTitleArtist = async () => {
+    const db = supabase
+    if (!db) return
+    const nextTitle = editableTitle.trim()
+    const nextArtist = editableArtist.trim()
+    if (!nextTitle) {
+      setTitleStatus('Please enter a title.')
+      return
+    }
+    setTitleStatus('Saving title and artist…')
+    const result = await db
+      .from('artworks')
+      .update({ title: nextTitle, artist: nextArtist || null })
+      .eq('id', artwork.id)
+      .select('*')
+      .single()
+    if (result.error || !result.data) {
+      setTitleStatus(result.error?.message || 'Could not save title/artist.')
+      return
+    }
+    setArtwork(result.data as ArtworkDetail)
+    setEditableTitle(result.data.title || nextTitle)
+    setEditableArtist(result.data.artist || nextArtist)
+    setTitleStatus('Title and artist saved.')
+    setIsEditingMeta(false)
+  }
   const regenerateDescription = async () => {
     const db = supabase
     if (!db || !artwork || isRegeneratingDescription) return
@@ -1060,11 +1086,27 @@ function MuseumArtworkDetail({
         />
         <div className="detail-body">
           {kicker ? <p className="eyebrow">{kicker}</p> : null}
-          <h1>{artwork.title || 'Untitled'}</h1>
+          <div className="detail-title-row">
+            <h1>{artwork.title || 'Untitled'}</h1>
+            <button
+              type="button"
+              className="detail-edit-meta-btn"
+              aria-label="Edit title and artist"
+              title="Edit title and artist"
+              onClick={() => {
+                setEditableTitle(artwork.title || '')
+                setEditableArtist(artwork.artist || '')
+                setTitleStatus('')
+                setIsEditingMeta((v) => !v)
+              }}
+            >
+              ✎
+            </button>
+          </div>
           <p className="artist">{artwork.artist || 'Unknown artist'}</p>
-          {isUntitled ? (
+          {isEditingMeta ? (
             <>
-              <p className="section-title">Set Title & Artist</p>
+              <p className="section-title">Edit Title & Artist</p>
               <input
                 value={editableTitle}
                 onChange={(e) => setEditableTitle(e.target.value)}
@@ -1080,34 +1122,22 @@ function MuseumArtworkDetail({
                   type="button"
                   className="btn btn-primary"
                   onClick={() => {
-                    void (async () => {
-                      const db = supabase
-                      if (!db) return
-                      const nextTitle = editableTitle.trim()
-                      const nextArtist = editableArtist.trim()
-                      if (!nextTitle) {
-                        setTitleStatus('Please enter a title.')
-                        return
-                      }
-                      setTitleStatus('Saving title and artist…')
-                      const result = await db
-                        .from('artworks')
-                        .update({ title: nextTitle, artist: nextArtist || null })
-                        .eq('id', artwork.id)
-                        .select('*')
-                        .single()
-                      if (result.error || !result.data) {
-                        setTitleStatus(result.error?.message || 'Could not save title.')
-                        return
-                      }
-                      setArtwork(result.data as ArtworkDetail)
-                      setEditableTitle(result.data.title || nextTitle)
-                      setEditableArtist(result.data.artist || nextArtist)
-                      setTitleStatus('Title and artist saved.')
-                    })()
+                    void saveTitleArtist()
                   }}
                 >
                   Save
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setEditableTitle(artwork.title || '')
+                    setEditableArtist(artwork.artist || '')
+                    setTitleStatus('')
+                    setIsEditingMeta(false)
+                  }}
+                >
+                  Cancel
                 </button>
               </div>
               {titleStatus ? <p className="page-status">{titleStatus}</p> : null}

@@ -1261,6 +1261,29 @@
   color: var(--text);
 }
 
+.museum-classic .detail-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.museum-classic .detail-edit-meta-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.museum-classic .detail-edit-meta-btn:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
 .museum-classic .detail-page .artist {
   color: var(--text-dim);
   letter-spacing: 0.08em;
